@@ -1,5 +1,14 @@
 # 💧 PloufNAS
 
+> [!WARNING]
+> 🚧 **PROJET EN DÉVELOPPEMENT — VERSION EXPÉRIMENTALE**
+>
+> **Cette version ne doit pas être utilisée comme seul moyen de surveillance d’un NAS.** Des défauts pouvant empêcher certaines alertes ont été identifiés, et la procédure d’installation reste à corriger et à valider.
+>
+> Le mode avancé affiche actuellement des **données de démonstration pour le CPU et les disques**. Ses réglages d’alertes matérielles ne sont pas encore opérationnels.
+>
+> Les corrections et les essais sur matériel sont prévus avant de considérer cette version comme fiable.
+
 Un NAS, comme tout ordinateur, possède des capteurs de température mais pas de capteur d'humidité !
 
 C'est pourquoi je vous propose un système complet et robuste de surveillance de la température et de l'humidité, connecté à un NAS OpenMediaVault (OMV). Ce projet combine un capteur SHT31 branché sur une carte Arduino, un stockage sécurisé sur RAID et un tableau de bord web personnalisé avec thèmes dynamiques et alertes push via serveur de notification ntfy (ici déployé avec Docker).

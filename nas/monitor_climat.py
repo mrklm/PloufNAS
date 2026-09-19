@@ -14,7 +14,7 @@ TEMP_MAX = 30.0    # °C
 HUM_MAX  = 80.0    # %
 
 # ntfy (instance locale)
-NTFY_URL = "http://localhost:8080/temp-hum-nas-klm-34854g37"
+NTFY_URL = "http://localhost:8080/VOTRE-TOPIC"
 
 # Alerte "pas de données" : délai sans réception avant alerte
 DELAI_SANS_DONNEES = 15 * 60   # 15 minutes

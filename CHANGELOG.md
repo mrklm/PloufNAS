@@ -15,6 +15,11 @@ et ce projet adhère au [versionnage sémantique](https://semver.org/lang/fr/).
 - Suite du mode « accès extérieur » : dashboard sans root et guide d'accès distant par VPN
   ou reverse proxy HTTPS (1.2.0)
 
+### Corrigé
+- Guide « Protéger ntfy par un jeton » validé sur OMV 8 et précisé : recréation du
+  conteneur par **Up**, mots de passe ntfy sans saisie interactive (`NTFY_PASSWORD`),
+  adresse du serveur identique dans l'application, remplacement d'un jeton divulgué
+
 ## [1.1.0] - 2026-11-12
 
 ### Ajouté

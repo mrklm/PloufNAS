@@ -558,22 +558,27 @@ Sans authentification, quiconque connaît le nom du topic peut lire vos alertes 
       - CHANGE_TO_COMPOSE_DATA_PATH/ntfy/lib:/var/lib/ntfy
 ```
 
-Enregistrez et redémarrez le service `ntfy`. À partir de là, plus personne ne peut lire ni écrire sans compte : les notifications sont suspendues jusqu'à l'étape 3.
+Enregistrez, puis cliquez sur **Up** sur la ligne `ntfy` : le conteneur est recréé avec les nouveaux réglages (un simple redémarrage ne suffit pas). Vérifiez avec `sudo docker exec ntfy ntfy user list` : la ligne `no access to any (other) topics` confirme l'activation. À partir de là, plus personne ne peut lire ni écrire sans compte : les notifications sont suspendues jusqu'à l'étape 3.
 
 **2. Créer les comptes et le jeton** (en SSH sur le NAS, remplacez `VOTRE-TOPIC`) :
 
 ```bash
-# Compte utilisé par PloufNAS : il peut seulement publier
-sudo docker exec -it ntfy ntfy user add ploufnas
+# Compte utilisé par PloufNAS : il peut seulement publier.
+# Son mot de passe, tiré au hasard, ne sert jamais (PloufNAS utilise le jeton).
+sudo docker exec -e NTFY_PASSWORD="$(openssl rand -hex 16)" ntfy ntfy user add ploufnas
 sudo docker exec ntfy ntfy access ploufnas VOTRE-TOPIC write-only
 sudo docker exec ntfy ntfy token add ploufnas        # affiche un jeton tk_…
 
-# Compte du téléphone : il peut seulement lire
-sudo docker exec -it ntfy ntfy user add telephone
+# Compte du téléphone : il peut seulement lire.
+# Le mot de passe n'est écrit qu'une fois, dans P ; history -c l'efface de l'historique.
+P='MotDePasseTelephone'; history -c
+sudo docker exec -e NTFY_PASSWORD="$P" ntfy ntfy user add telephone
 sudo docker exec ntfy ntfy access telephone VOTRE-TOPIC read-only
+# Vérification : doit afficher les messages du topic, et non « unauthorized »
+curl -s -u "telephone:$P" "http://localhost:8080/VOTRE-TOPIC/json?poll=1&since=1h"; unset P
 ```
 
-`ntfy user add` demande un mot de passe pour le compte (deux fois).
+> 💡 La variable `NTFY_PASSWORD` évite la saisie interactive de ntfy, qui échoue souvent quand la commande est collée (la touche Entrée en trop envoie un mot de passe vide). Pour changer un mot de passe plus tard : `ntfy user change-pass` au lieu de `ntfy user add`.
 
 **3. Enregistrer le jeton dans PloufNAS**, puis vérifier :
 
@@ -587,6 +592,10 @@ journalctl -u monitor-climat -n 5 --no-pager
 Le jeton est pris en compte sans redémarrage ; le redémarrage sert seulement à envoyer une notification de test. Il est conservé dans `config.json` (lisible par `root` uniquement) et n'est jamais transmis au navigateur.
 
 **4. Connecter le téléphone.** Dans l'application ntfy : **Paramètres → Gérer les utilisateurs → Ajouter**, indiquez l'adresse du serveur et le compte `telephone`. La notification de démarrage doit apparaître.
+
+> ⚠️ L'adresse du serveur doit être **exactement** celle de l'abonnement au topic, au caractère près : `http://IP-DU-NAS:8080` et `http://IP-DU-NAS:8080/` sont deux serveurs différents pour l'application, qui affiche alors une erreur 401/403. L'adresse d'un compte ne se modifie pas : supprimez-le et ajoutez-le de nouveau.
+>
+> Si un jeton a été divulgué : `ntfy token add ploufnas`, `sudo python3 config.py --jeton-ntfy` avec le nouveau, puis `ntfy token remove ploufnas tk_ancien`.
 
 > ⚠️ Hors du réseau local, `ntfy_url` doit commencer par `https://` : en HTTP, le jeton circule en clair. PloufNAS le signale au démarrage dans `journalctl`.
 >

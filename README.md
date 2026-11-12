@@ -265,7 +265,7 @@ En SSH sur le NAS :
 
 ```bash
 sudo apt update
-sudo apt install -y python3 python3-serial python3-flask python3-requests smartmontools curl
+sudo apt install -y python3 python3-serial python3-flask python3-requests python3-waitress smartmontools curl
 ```
 
 > 💡 N'utilisez pas `sudo pip3 install` : sur OMV 7 (Debian 12), pip refuse d'installer des paquets dans le Python système (erreur `externally-managed-environment`). Les paquets `python3-*` de Debian font la même chose proprement et sont mis à jour avec le système.
@@ -340,7 +340,7 @@ Pour trouver l'IP du NAS :
 hostname -I
 ```
 
-**Optionnel** — accès depuis l'extérieur : passez **obligatoirement** par un reverse-proxy (nginx d'OMV) avec HTTPS et une authentification. ⚠️ **N'exposez jamais Flask directement sur Internet.**
+**Optionnel** — accès depuis l'extérieur : voir la section [🔐 Sécurité](#-sécurité). ⚠️ **N'exposez jamais le dashboard directement sur Internet**, sans HTTPS.
 
 ---
 
@@ -380,7 +380,7 @@ sudo cp -a $MON $MON.sauvegarde-$(date +%F)
 
 # 4. Dépendances (sans effet si elles sont déjà installées)
 sudo apt update
-sudo apt install -y python3-serial python3-flask python3-requests smartmontools
+sudo apt install -y python3-serial python3-flask python3-requests python3-waitress smartmontools
 
 # 5. Supprimer les fichiers des anciennes versions
 #    (alertes.json est conservé : ses réglages sont repris dans config.json)
@@ -518,11 +518,28 @@ Les tests du dashboard sont ignorés si Flask n'est pas installé sur la machine
 ## 🔐 Sécurité
 
 - ❌ Ne **jamais** exposer Flask ou ntfy directement sur Internet
-- ✅ L'enregistrement des réglages depuis le dashboard est protégé par **mot de passe** (empreinte PBKDF2 dans `config.json`). La consultation reste ouverte au réseau local. Pour ntfy, activez son authentification si besoin.
+- ✅ L'enregistrement des réglages depuis le dashboard est protégé par **mot de passe** (empreinte PBKDF2 dans `config.json`). Par défaut, la consultation reste ouverte au réseau local. Pour ntfy, activez son authentification si besoin.
+- ✅ Après **5 mots de passe incorrects en 15 minutes**, l'adresse IP concernée est bloquée jusqu'à la fin de ce délai.
+- ✅ La page applique une politique de sécurité stricte (CSP : aucun script extérieur ni en ligne, pas d'affichage dans un cadre) et les réglages ne peuvent pas être envoyés depuis un autre site.
 - ✅ Restreindre l'accès au **LAN** via pare-feu
 - ✅ Les services tournent en `root` — acceptable en LAN, à durcir (user dédié) si exposé
 - ✅ Choisir un **nom de topic ntfy long et aléatoire** (il fait office de mot de passe)
 - ✅ Garder le système à jour (`sudo apt update && sudo apt upgrade`)
+
+### Options du dashboard (section `dashboard` de `config.json`)
+
+Elles se règlent uniquement dans le fichier (jamais depuis le navigateur), puis `sudo systemctl restart dashboard-climat`.
+
+| Option | Rôle | Par défaut |
+|---|---|---|
+| `adresse` | Adresse d'écoute. `127.0.0.1` : accessible seulement depuis le NAS (derrière un reverse proxy installé sur le NAS) | `0.0.0.0` (tout le réseau) |
+| `port` | Port d'écoute | `5000` |
+| `consultation_protegee` | `true` : le mot de passe est demandé dès l'ouverture du dashboard (fenêtre du navigateur, nom d'utilisateur libre) | `false` |
+| `derriere_proxy` | `true` : le dashboard est derrière un reverse proxy, dont il prend en compte les en-têtes `X-Forwarded-*` (adresse réelle du visiteur, pour le blocage des mots de passe faux) | `false` |
+
+> ⚠️ Le mot de passe circule en clair en HTTP. Si le dashboard est accessible hors de votre réseau, il doit l'être **uniquement en HTTPS** (reverse proxy) ou **via un VPN**, avec `consultation_protegee` à `true`. Ne mettez `derriere_proxy` à `true` que si un proxy est réellement devant le dashboard : sinon un visiteur pourrait se faire passer pour une autre adresse et contourner le blocage.
+
+Le dashboard utilise le serveur de production **waitress** s'il est installé (`sudo apt install python3-waitress`), sinon le serveur intégré de Flask, réservé à un usage en réseau local.
 
 ---
 

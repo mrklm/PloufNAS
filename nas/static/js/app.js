@@ -492,6 +492,14 @@ if (window.ResizeObserver && chartContainer) {
     ro.observe(chartContainer);
 }
 
+// Pas de code dans la page (politique de sécurité CSP) : tout est relié ici
+document.getElementById('openSettings').addEventListener('click', openSettings);
+document.getElementById('closeSettings').addEventListener('click', closeSettings);
+document.getElementById('applySettings').addEventListener('click', applySettings);
+document.querySelectorAll('img').forEach(img => {
+    img.addEventListener('error', () => { img.style.display = 'none'; });
+});
+
 const prefs = appliquerPrefs();
 initThemes(prefs);
 initColorPickers();

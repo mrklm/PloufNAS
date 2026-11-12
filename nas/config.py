@@ -32,6 +32,12 @@ DEFAUTS = {
     "fichier_csv": "climat.csv",          # relatif au dossier des scripts, ou absolu
     "ntfy_url": NTFY_NON_CONFIGURE,
     "mot_de_passe_hash": "",              # à définir avec : python3 config.py --mot-de-passe
+    "dashboard": {
+        "adresse": "0.0.0.0",             # 127.0.0.1 derrière un reverse proxy sur le NAS
+        "port": 5000,
+        "consultation_protegee": False,   # True : mot de passe demandé dès l'ouverture
+        "derriere_proxy": False,          # True : faire confiance à X-Forwarded-For/-Proto
+    },
     # --- Réglages modifiables depuis le dashboard ---
     "seuils": {
         "temp_max": 30.0,
@@ -141,6 +147,20 @@ def valider_config(donnees):
             resultat[cle] = donnees[cle]
     if not resultat["port_serie"] or not resultat["fichier_csv"]:
         raise ConfigInvalide("« port_serie » et « fichier_csv » ne peuvent pas être vides.")
+
+    dashboard = donnees.get("dashboard", {})
+    if not isinstance(dashboard, dict):
+        raise ConfigInvalide("« dashboard » doit être un objet.")
+    cible = resultat["dashboard"]
+    if "adresse" in dashboard:
+        if not isinstance(dashboard["adresse"], str) or not dashboard["adresse"].strip():
+            raise ConfigInvalide("« dashboard.adresse » doit être une adresse IP (ex. 0.0.0.0).")
+        cible["adresse"] = dashboard["adresse"].strip()
+    if "port" in dashboard:
+        cible["port"] = int(_nombre(dashboard["port"], "dashboard.port", (1, 65535)))
+    for cle in ("consultation_protegee", "derriere_proxy"):
+        if cle in dashboard:
+            cible[cle] = _booleen(dashboard[cle], f"dashboard.{cle}")
     return valider_reglages_dashboard(donnees, resultat)
 
 

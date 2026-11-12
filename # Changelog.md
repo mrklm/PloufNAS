@@ -16,6 +16,32 @@ et ce projet adhère au [versionnage sémantique](https://semver.org/lang/fr/).
   dashboard protégée, écoute derrière un reverse proxy HTTPS, limite des tentatives de
   mot de passe, services sans root
 
+## [0.8.0] - 2026-11-12
+
+Première étape du mode « accès extérieur » : tout est optionnel, le comportement
+par défaut en réseau local est inchangé.
+
+### Ajouté
+- Section `dashboard` de `config.json` (modifiable uniquement dans le fichier) : adresse et
+  port d'écoute, `consultation_protegee` (mot de passe dès l'ouverture), `derriere_proxy`
+  (prise en compte des en-têtes `X-Forwarded-*`)
+- **Blocage des mots de passe faux** : 5 échecs en 15 min bloquent l'adresse IP jusqu'à la
+  fin de ce délai (remplace le simple délai d'une seconde)
+- **En-têtes de sécurité HTTP** : politique CSP stricte, interdiction d'affichage dans un
+  cadre, pas de mise en cache des réponses de l'API
+- Refus des réglages envoyés depuis un autre site ou dans un autre format que JSON
+- Serveur de production **waitress** utilisé s'il est installé (`python3-waitress`)
+- Tests de sécurité du dashboard
+
+### Modifié
+- Plus aucun code JavaScript dans la page HTML (`onclick`, `onerror`) : tout est relié
+  depuis `app.js`, condition de la politique CSP
+- `python3-waitress` ajouté aux dépendances recommandées
+
+### Sécurité
+- Consultation protégée demandée sans mot de passe défini : le dashboard refuse l'accès
+  au lieu de rester ouvert
+
 ## [0.7.0] - 2026-11-12
 
 ### Ajouté
@@ -185,7 +211,8 @@ de démonstration pour le CPU et les disques.
 - Services systemd pour le démarrage automatique
 - Documentation initiale (README)
 
-[Non publié]: https://github.com/mrklm/PloufNAS/compare/v0.7.0...HEAD
+[Non publié]: https://github.com/mrklm/PloufNAS/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/mrklm/PloufNAS/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/mrklm/PloufNAS/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/mrklm/PloufNAS/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/mrklm/PloufNAS/compare/v0.5.0...v0.5.1

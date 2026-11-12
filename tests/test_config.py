@@ -59,6 +59,18 @@ class TestValidation(unittest.TestCase):
         self.assertEqual(cfg["port_serie"], config.DEFAUTS["port_serie"])
         self.assertNotIn("inconnu", cfg["alertes_systeme"])
 
+    def test_section_dashboard(self):
+        cfg = config.valider_config({"dashboard": {"adresse": "127.0.0.1", "port": 8090,
+                                                   "consultation_protegee": True}})
+        self.assertEqual(cfg["dashboard"], {"adresse": "127.0.0.1", "port": 8090,
+                                            "consultation_protegee": True,
+                                            "derriere_proxy": False})
+        for invalide in ({"port": 70000}, {"port": "5000"}, {"adresse": ""},
+                         {"consultation_protegee": "oui"}, {"derriere_proxy": 1}):
+            with self.subTest(invalide=invalide):
+                with self.assertRaises(config.ConfigInvalide):
+                    config.valider_config({"dashboard": invalide})
+
     def test_vue_publique_sans_secret(self):
         vue = config.vue_publique(dict(config.DEFAUTS, mot_de_passe_hash="h",
                                        ntfy_url="http://x/secret"))

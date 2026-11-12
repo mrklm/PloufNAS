@@ -52,12 +52,12 @@ class TestApi(unittest.TestCase):
             f.write("ligne abîmée\n")
         self.patch = mock.patch.object(config, "CHEMIN_CONFIG", self.chemin_config)
         self.patch.start()
-        self.patch_sleep = mock.patch.object(dashboard.time, "sleep")
-        self.patch_sleep.start()
+        self.patch_limiteur = mock.patch.object(dashboard, "limiteur", dashboard.Limiteur())
+        self.patch_limiteur.start()
         self.client = dashboard.app.test_client()
 
     def tearDown(self):
-        self.patch_sleep.stop()
+        self.patch_limiteur.stop()
         self.patch.stop()
         self.dossier.cleanup()
 
@@ -118,6 +118,94 @@ class TestApi(unittest.TestCase):
         self.assertTrue(data["disponible"])
         self.assertEqual(data["cpu"]["temp"], 41.0)
         self.assertGreaterEqual(data["age"], 120)
+
+    def modifier_config(self, **dashboard_):
+        cfg = config.charger()
+        cfg["dashboard"].update(dashboard_)
+        config.enregistrer(cfg)
+
+    def test_blocage_apres_plusieurs_echecs(self):
+        for _ in range(dashboard.ESSAIS_MAX):
+            self.assertEqual(self.post({"seuils": {"hum_max": 70}}, auth("faux")).status_code, 401)
+        r = self.post({"seuils": {"hum_max": 70}}, auth("secret123"))   # même le bon est refusé
+        self.assertEqual(r.status_code, 429)
+        self.assertIn("Réessayez dans", r.get_json()["message"])
+
+    def test_succes_remet_le_compteur_a_zero(self):
+        for _ in range(dashboard.ESSAIS_MAX - 1):
+            self.post({"seuils": {"hum_max": 70}}, auth("faux"))
+        self.assertEqual(self.post({"seuils": {"hum_max": 70}}, auth("secret123")).status_code, 200)
+        self.assertEqual(self.post({"seuils": {"hum_max": 70}}, auth("faux")).status_code, 401)
+
+    def test_blocage_leve_apres_la_fenetre(self):
+        horloge = [1000.0]
+        l = dashboard.Limiteur(essais_max=2, fenetre=60, horloge=lambda: horloge[0])
+        l.echec("1.2.3.4")
+        l.echec("1.2.3.4")
+        self.assertGreater(l.attente("1.2.3.4"), 0)
+        self.assertEqual(l.attente("5.6.7.8"), 0)       # les autres adresses ne sont pas bloquées
+        horloge[0] += 61
+        self.assertEqual(l.attente("1.2.3.4"), 0)
+
+    def test_requete_d_un_autre_site_refusee(self):
+        r = self.post({"seuils": {"hum_max": 70}},
+                      dict(auth("secret123"), **{"Sec-Fetch-Site": "cross-site"}))
+        self.assertEqual(r.status_code, 403)
+
+    def test_post_non_json_refuse(self):
+        r = self.client.post("/api/config", data="seuils=1", content_type="text/plain",
+                             headers=auth("secret123"))
+        self.assertEqual(r.status_code, 400)
+
+    def test_en_tetes_de_securite(self):
+        r = self.client.get("/")
+        self.assertIn("script-src 'self'", r.headers["Content-Security-Policy"])
+        self.assertEqual(r.headers["X-Frame-Options"], "DENY")
+        self.assertEqual(r.headers["X-Content-Type-Options"], "nosniff")
+        r.close()
+        self.assertEqual(self.client.get("/api").headers["Cache-Control"], "no-store")
+
+    def test_page_sans_code_en_ligne(self):
+        r = self.client.get("/")
+        page = r.get_data(as_text=True)
+        r.close()
+        self.assertNotRegex(page, r"\son[a-z]+=")       # onclick, onerror…
+        self.assertNotIn("<script>", page)
+        self.assertNotIn("style=", page)
+
+    def test_consultation_libre_par_defaut(self):
+        r = self.client.get("/")
+        self.assertEqual(r.status_code, 200)
+        r.close()
+
+    def test_consultation_protegee(self):
+        self.modifier_config(consultation_protegee=True)
+        r = self.client.get("/api")
+        self.assertEqual(r.status_code, 401)
+        self.assertIn("Basic", r.headers["WWW-Authenticate"])   # fenêtre du navigateur
+        self.assertEqual(self.client.get("/api", headers=auth("secret123")).status_code, 200)
+        r = self.client.get("/static/js/app.js", headers=auth("faux"))
+        self.assertEqual(r.status_code, 401)
+        r.close()
+
+    def test_consultation_protegee_post_sans_fenetre_navigateur(self):
+        self.modifier_config(consultation_protegee=True)
+        r = self.post({"seuils": {"hum_max": 70}}, auth("faux"))
+        self.assertEqual(r.status_code, 401)
+        self.assertNotIn("WWW-Authenticate", r.headers)
+
+    def test_consultation_protegee_sans_mot_de_passe(self):
+        cfg = config.charger()
+        cfg["mot_de_passe_hash"] = ""
+        cfg["dashboard"]["consultation_protegee"] = True
+        config.enregistrer(cfg)
+        self.assertEqual(self.client.get("/").status_code, 503)    # fermé, pas ouvert
+
+    def test_le_navigateur_ne_peut_pas_ouvrir_la_consultation(self):
+        self.modifier_config(consultation_protegee=True)
+        r = self.post({"dashboard": {"consultation_protegee": False}}, auth("secret123"))
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(config.charger()["dashboard"]["consultation_protegee"])
 
     def test_fichiers_statiques(self):
         for chemin in ("/", "/static/js/app.js", "/static/css/style.css",

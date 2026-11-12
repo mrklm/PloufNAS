@@ -13,13 +13,13 @@
             <span class="title">PloufNAS</span>
             <span class="version" id="version"></span>
         </h1>
-        <button onclick="openSettings()">⚙️ Paramètres</button>
+        <button id="openSettings">⚙️ Paramètres</button>
     </div>
 
     <!-- Bloc ambiance -->
     <div class="ambiance">
         <div class="nas-icon">
-            <img src="static/img/NAS.png" alt="NAS" onerror="this.style.display='none'">
+            <img src="static/img/NAS.png" alt="NAS">
         </div>
         <div class="values">
             <div class="value" id="temp">-- °C</div>
@@ -35,12 +35,12 @@
         <div class="disks" id="disksBlock"></div>
         <div class="system" id="systemBlock">
             <div class="block" id="cpuBlock">
-                <img src="static/img/CPU.png" alt="CPU" onerror="this.style.display='none'">
+                <img src="static/img/CPU.png" alt="CPU">
                 <div class="name">CPU</div>
                 <div class="temp" id="cpuTemp">-- °C</div>
             </div>
             <div class="block" id="gpuBlock">
-                <img src="static/img/GPU.png" alt="GPU" onerror="this.style.display='none'">
+                <img src="static/img/GPU.png" alt="GPU">
                 <div class="name">GPU</div>
                 <div class="temp" id="gpuTemp">-- °C</div>
             </div>
@@ -52,7 +52,7 @@
         <div class="modal">
             <h2>
                 ⚙️ Paramètres
-                <button onclick="closeSettings()">×</button>
+                <button id="closeSettings" aria-label="Fermer">×</button>
             </h2>
 
             <!-- 1. Mode d'affichage -->
@@ -195,7 +195,7 @@
 
             <div class="message" id="settingsMessage" role="status"></div>
             <div class="actions">
-                <button onclick="applySettings()">Appliquer</button>
+                <button id="applySettings">Appliquer</button>
             </div>
         </div>
     </div>

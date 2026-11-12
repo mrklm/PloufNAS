@@ -107,6 +107,8 @@ Pour éviter que le nom du port Arduino (`/dev/ttyUSB0`) ne change au redémarra
 
 > 💡 Si le symlink n'apparaît pas, débranchez/rebranchez l'Arduino et relancez `sudo udevadm trigger`.
 
+> ⚠️ Les règles CH340 et FTDI reconnaissent n'importe quel appareil équipé de ces puces (un onduleur USB, par exemple). Si un autre appareil USB-série est branché sur le NAS, restreignez la règle au numéro de série de votre carte : la marche à suivre est décrite en tête du fichier `nas/99-arduino-nas.rules`.
+
 ---
 
 ### Étape 4 : Installation de ntfy (alertes push)
@@ -194,29 +196,47 @@ lsblk -f
 ```
 
 Repérez la ligne correspondant à votre disque/RAID, et copiez la valeur dans la colonne `UUID`.
-
-**2. Copiez les scripts au bon endroit :**
+Placez-la dans une variable : les commandes suivantes l'utilisent pour éviter les erreurs de copie.
 
 ```bash
-# Créer le dossier monitoring sur le volume
-sudo mkdir -p /srv/dev-disk-by-uuid-VOTRE_UUID/monitoring
+UUID=collez-ici-votre-uuid
+ls -d /srv/dev-disk-by-uuid-$UUID   # doit afficher le dossier, sinon l'UUID est faux
+```
+
+> 💡 La variable est perdue si vous fermez la session SSH : redéfinissez-la avant de reprendre aux étapes 5 ou 8.
+
+**2. Copiez les scripts et les images au bon endroit :**
+
+```bash
+MON=/srv/dev-disk-by-uuid-$UUID/monitoring
+
+# Créer le dossier monitoring (et le sous-dossier des images) sur le volume
+sudo mkdir -p $MON/assets
 
 # Copier les scripts depuis le repo cloné
 sudo cp ~/PloufNAS/nas/monitor_climat.py \
         ~/PloufNAS/nas/setup_dashboard.py \
-        /srv/dev-disk-by-uuid-VOTRE_UUID/monitoring/
+        $MON/
+
+# Copier les images du dashboard (sinon elles n'apparaissent pas)
+sudo cp ~/PloufNAS/assets/NAS.png ~/PloufNAS/assets/CPU.png \
+        ~/PloufNAS/assets/GPU.png ~/PloufNAS/assets/DD.png \
+        $MON/assets/
+
+# Renseigner automatiquement le chemin du CSV dans monitor_climat.py
+sudo sed -i "s/VOTRE_UUID/$UUID/" $MON/monitor_climat.py
 
 # Générer dashboard.py
-cd /srv/dev-disk-by-uuid-VOTRE_UUID/monitoring/
+cd $MON
 sudo python3 setup_dashboard.py
 
 # Vérifier
-ls -la
+ls -la $MON $MON/assets
 ```
 
 **3. Personnalisez `monitor_climat.py` :**
 
-Éditez le fichier et adaptez la section **CONFIGURATION** en haut :
+Éditez le fichier (`sudo nano $MON/monitor_climat.py`) et vérifiez la section **CONFIGURATION** en haut. Le chemin du CSV a déjà été renseigné ; il reste au minimum à remplacer `VOTRE-TOPIC` :
 
 ```python
 port_serie  = '/dev/arduino_nas'
@@ -235,13 +255,11 @@ NTFY_URL = "http://localhost:8080/VOTRE-TOPIC"
 En SSH sur le NAS :
 
 ```bash
-# Outils de base (si non installés)
 sudo apt update
-sudo apt install -y python3 python3-pip python3-venv curl
-
-# Dépendances nécessaires
-sudo pip3 install pyserial flask requests
+sudo apt install -y python3 python3-serial python3-flask python3-requests curl
 ```
+
+> 💡 N'utilisez pas `sudo pip3 install` : sur OMV 7 (Debian 12), pip refuse d'installer des paquets dans le Python système (erreur `externally-managed-environment`). Les paquets `python3-*` de Debian font la même chose proprement et sont mis à jour avec le système.
 
 > ⚠️ Les services fournis dans `nas/*.service` utilisent `User=root` et `/usr/bin/python3` (Python système, pas de venv). C'est fonctionnel mais peu élégant côté sécurité. Pour un usage domestique sur réseau local, ça reste acceptable.
 
@@ -270,11 +288,16 @@ Si tout fonctionne → passez à systemd. Sinon → inspectez les erreurs affich
 
 ### Étape 8 : Installation des services systemd
 
-Les fichiers sont fournis dans `nas/`. Il faut les copier dans `/etc/systemd/system/` :
+Les fichiers sont fournis dans `nas/`. Il faut les copier dans `/etc/systemd/system/` puis y remplacer `VOTRE_UUID` (variable `UUID` définie à l'étape 5) :
 
 ```bash
 sudo cp ~/PloufNAS/nas/monitor-climat.service /etc/systemd/system/
 sudo cp ~/PloufNAS/nas/dashboard-climat.service /etc/systemd/system/
+sudo sed -i "s/VOTRE_UUID/$UUID/g" /etc/systemd/system/monitor-climat.service \
+                                    /etc/systemd/system/dashboard-climat.service
+
+# Vérifier qu'il ne reste aucun VOTRE_UUID (la commande ne doit rien afficher)
+grep VOTRE_UUID /etc/systemd/system/*-climat.service
 
 # Recharger systemd
 sudo systemctl daemon-reload
@@ -376,6 +399,9 @@ python3 -m unittest discover -s tests
 | Thème ne change pas | Videz le cache navigateur (Ctrl+F5) |
 | Service ne démarre pas | `journalctl -u <monitor-climat\|dashboard-climat> -xe` |
 | Erreur "UUID not found" | Vérifiez que `VOTRE_UUID` a bien été remplacé |
+| Service bloqué au démarrage (`Dependency failed`) | Le volume n'est pas monté ou l'UUID est faux : `grep RequiresMountsFor /etc/systemd/system/*-climat.service` puis `ls /srv/` |
+| Erreur `externally-managed-environment` | N'utilisez pas `pip3` : installez les paquets `python3-*` avec `apt` (étape 6) |
+| Images absentes du dashboard | Copiez les images dans `monitoring/assets/` (étape 5) |
 | **Erreur `latin-1 codec can't encode`** | Un emoji est présent dans un **titre** de notification. Les titres ne doivent contenir que de l'ASCII — les emojis sont OK dans le **corps** du message. |
 | Notification ntfy non reçue | Vérifiez que le conteneur tourne : `docker ps \| grep ntfy` |
 | ntfy inaccessible | Testez `curl http://localhost:8080/v1/health` sur le NAS |

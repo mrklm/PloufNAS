@@ -8,6 +8,16 @@
 #
 # Pour identifier votre Arduino :
 #   lsusb | grep -i "arduino\|ch340\|1a86\|2341\|0403"
+#
+# ATTENTION : les puces CH340 et FTDI équipent aussi d'autres appareils USB-série
+# (onduleurs, adaptateurs, etc.). Si un tel appareil est branché sur le NAS, il
+# pourrait recevoir le symlink à la place de l'Arduino. Dans ce cas, gardez une
+# seule ligne et ajoutez le numéro de série de votre carte :
+#   udevadm info -a -n /dev/ttyUSB0 | grep '{serial}' | head -1
+# puis, par exemple :
+#   SUBSYSTEM=="tty", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6001", ATTRS{serial}=="A9XXXXXX", SYMLINK+="arduino_nas"
+# (Les clones CH340 n'ont souvent pas de numéro de série : utilisez alors KERNELS=="1-1.2",
+#  le chemin du port USB physique, visible avec la même commande.)
 
 # Arduino Uno officiel (Vendor 2341 / Product 0043)
 SUBSYSTEM=="tty", ATTRS{idVendor}=="2341", ATTRS{idProduct}=="0043", SYMLINK+="arduino_nas"

@@ -1,13 +1,18 @@
-# IMPORTANT : Remplacez 'VOTRE_UUID_ICI' par l'UUID de votre disque/RAID.
+# IMPORTANT : remplacez 'VOTRE_UUID' par l'UUID de votre disque/RAID (3 occurrences).
 # Pour trouver votre UUID, tapez la commande 'lsblk -f' dans le terminal de votre NAS,
 # ou consultez l'interface OMV > Stockage > Systèmes de fichiers.
 [Unit]
 Description=Script de monitoring climatique Arduino
-After=network.target
+# Attendre le réseau et Docker (conteneur ntfy) pour ne pas perdre la notification de démarrage
+Wants=network-online.target
+After=network-online.target docker.service
+# Ne pas démarrer tant que le volume de stockage n'est pas monté
+RequiresMountsFor=/srv/dev-disk-by-uuid-VOTRE_UUID/monitoring
 
 [Service]
 ExecStart=/usr/bin/python3 /srv/dev-disk-by-uuid-VOTRE_UUID/monitoring/monitor_climat.py
 WorkingDirectory=/srv/dev-disk-by-uuid-VOTRE_UUID/monitoring
+Environment=PYTHONUNBUFFERED=1
 Restart=always
 RestartSec=30
 User=root

@@ -275,6 +275,15 @@ def ouvrir_port(journaliser_echec=True):
     return ser
 
 
+def notifier_demarrage():
+    return envoyer_ntfy(
+        "[OK] Monitoring climatique demarre",
+        "🟢 Le service de surveillance est actif.",
+        priorite="low",
+        tags="white_check_mark"
+    )
+
+
 def main():
     logging.basicConfig(
         level=logging.INFO,
@@ -285,12 +294,9 @@ def main():
     sys.stdout.reconfigure(line_buffering=True)
 
     surveillance = Surveillance()
-    envoyer_ntfy(
-        "[OK] Monitoring climatique demarre",
-        "🟢 Le service de surveillance est actif.",
-        priorite="low",
-        tags="white_check_mark"
-    )
+    # Retentée à chaque cycle tant qu'elle n'est pas passée : au démarrage du NAS,
+    # le conteneur ntfy peut être prêt après ce service.
+    demarrage_notifie = notifier_demarrage()
     log.info("Surveillance active (Temp + Hum).")
 
     ser = None
@@ -348,6 +354,8 @@ def main():
                         log.info("Temp : %s°C | Hum : %s%%", temp, hum)
 
         surveillance.verifier_silence()
+        if not demarrage_notifie:
+            demarrage_notifie = notifier_demarrage()
         time.sleep(INTERVALLE_LECTURE)
 
 

@@ -1,10 +1,15 @@
+# IMPORTANT : remplacez 'VOTRE_UUID' par l'UUID de votre disque/RAID (3 occurrences).
 [Unit]
 Description=Dashboard Web ploufNAS
-After=network.target
+Wants=network-online.target
+After=network-online.target
+# Ne pas démarrer tant que le volume de stockage n'est pas monté
+RequiresMountsFor=/srv/dev-disk-by-uuid-VOTRE_UUID/monitoring
 
 [Service]
 ExecStart=/usr/bin/python3 /srv/dev-disk-by-uuid-VOTRE_UUID/monitoring/dashboard.py
 WorkingDirectory=/srv/dev-disk-by-uuid-VOTRE_UUID/monitoring
+Environment=PYTHONUNBUFFERED=1
 Restart=always
 RestartSec=30
 User=root

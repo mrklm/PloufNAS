@@ -20,12 +20,19 @@ et ce projet adhère au [versionnage sémantique](https://semver.org/lang/fr/).
 - Arduino débranché : reconnexion automatique au lieu d'un plantage et d'une rafale de notifications
 - Arduino : la lecture du SHT31 est vérifiée, une ligne `ERR` est envoyée en cas d'échec,
   et l'initialisation du capteur est retentée
+- Règle udev renommée `99-arduino-nas.rules` (l'extension `.rb` faisait échouer la copie indiquée dans le README)
+- Installation des dépendances via `apt` au lieu de `pip3` (refusé sur OMV 7 / Debian 12)
+- Services systemd : attente du montage du volume (`RequiresMountsFor`), du réseau et de Docker ;
+  logs non tamponnés
+- README : copie des images du dashboard et remplacement de l'UUID dans les services
 
 ### Ajouté
 - Hystérésis sur les seuils de température et d'humidité
 - Alerte unique si le CSV ne peut pas être écrit
 - Journalisation via `logging`, visible en direct dans `journalctl`
 - Tests unitaires (`tests/test_monitor_climat.py`)
+- Notification de démarrage retentée tant que ntfy n'est pas joignable
+- Règle udev : procédure pour la restreindre au numéro de série de la carte
 
 ## [0.3.0] - 2026-09-18
 

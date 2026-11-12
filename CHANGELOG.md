@@ -18,7 +18,8 @@ et ce projet adhère au [versionnage sémantique](https://semver.org/lang/fr/).
 ### Corrigé
 - Guide « Protéger ntfy par un jeton » validé sur OMV 8 et précisé : recréation du
   conteneur par **Up**, mots de passe ntfy sans saisie interactive (`NTFY_PASSWORD`),
-  adresse du serveur identique dans l'application, remplacement d'un jeton divulgué
+  adresse du serveur identique dans l'application, remplacement d'un jeton divulgué,
+  vérification sans afficher les jetons (`ntfy token list` les montre en entier)
 
 ## [1.1.0] - 2026-11-12
 

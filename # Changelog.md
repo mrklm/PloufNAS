@@ -13,7 +13,35 @@ et ce projet adhère au [versionnage sémantique](https://semver.org/lang/fr/).
 - joindre un fichier STL pour mettre l'arduino dans le compartiement cdrom
   avec LCD et bouton en facade + capteurs int/ext ?
 
+## [0.4.0] - 2026-11-12
+
+Version expérimentale : le mode avancé du dashboard affiche encore des données
+de démonstration pour le CPU et les disques.
+
+### Ajouté
+- Dashboard : **mode complet** (en plus du mode basique) avec blocs disques, CPU et GPU
+  (données de démonstration pour l'instant)
+- Dashboard : panneau **Paramètres** (mode d'affichage, composants affichés, couleurs
+  des courbes, thème conservé au rechargement)
+- Dashboard : réglages d'alertes système (CPU, disques, SMART, GPU) enregistrés dans
+  `alertes.json` via `/api/alertes` (pas encore pris en compte par la surveillance)
+- Icônes du dashboard (`assets/NAS.png`, `CPU.png`, `DD.png`, `GPU.png`) servies par Flask
+- Capture de l'interface avancée dans le README
+- Hystérésis sur les seuils de température et d'humidité
+- Alerte unique si le CSV ne peut pas être écrit
+- Journalisation via `logging`, visible en direct dans `journalctl`
+- Tests unitaires (`tests/test_monitor_climat.py`)
+- Notification de démarrage retentée tant que ntfy n'est pas joignable
+- Règle udev : procédure pour la restreindre au numéro de série de la carte
+
+### Modifié
+- Numéro de version du dashboard aligné sur celui du projet (`v3.0` → `v0.4.0`)
+- README : avertissement sur le statut expérimental du projet
+- Topic ntfy anonymisé dans `monitor_climat.py` (`VOTRE-TOPIC`)
+
 ### Corrigé
+- Dashboard : redimensionnement incohérent des graphiques et placement des blocs
+  (mode plein écran)
 - Alerte « pas de données » active dès le démarrage (un capteur muet n'était jamais signalé)
 - Une notification ntfy en échec est retentée au lieu d'être perdue
 - Lignes série tronquées et valeurs hors plage ignorées (fausses valeurs d'humidité)
@@ -25,14 +53,6 @@ et ce projet adhère au [versionnage sémantique](https://semver.org/lang/fr/).
 - Services systemd : attente du montage du volume (`RequiresMountsFor`), du réseau et de Docker ;
   logs non tamponnés
 - README : copie des images du dashboard et remplacement de l'UUID dans les services
-
-### Ajouté
-- Hystérésis sur les seuils de température et d'humidité
-- Alerte unique si le CSV ne peut pas être écrit
-- Journalisation via `logging`, visible en direct dans `journalctl`
-- Tests unitaires (`tests/test_monitor_climat.py`)
-- Notification de démarrage retentée tant que ntfy n'est pas joignable
-- Règle udev : procédure pour la restreindre au numéro de série de la carte
 
 ## [0.3.0] - 2026-09-18
 
@@ -88,7 +108,8 @@ et ce projet adhère au [versionnage sémantique](https://semver.org/lang/fr/).
 - Services systemd pour le démarrage automatique
 - Documentation initiale (README)
 
-[Non publié]: https://github.com/mrklm/PloufNAS/compare/v0.3.0...HEAD
+[Non publié]: https://github.com/mrklm/PloufNAS/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/mrklm/PloufNAS/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/mrklm/PloufNAS/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/mrklm/PloufNAS/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/mrklm/PloufNAS/releases/tag/v0.1.0

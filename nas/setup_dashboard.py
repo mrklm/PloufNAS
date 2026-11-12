@@ -4,8 +4,8 @@ import os
 # Le script génère les fichiers dans le dossier courant pour être universel
 BASE_DIR = './'
 
-# Version affichée dans le header (à mettre à jour manuellement)
-VERSION = 'v3.0'
+# Version affichée dans le header : doit correspondre à la dernière version du changelog
+VERSION = 'v0.4.0'
 
 # ============================================================
 # THÈMES

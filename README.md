@@ -3,7 +3,7 @@
 > [!WARNING]
 > 🚧 **PROJET EN DÉVELOPPEMENT — VERSION EXPÉRIMENTALE**
 >
-> **Cette version ne doit pas être utilisée comme seul moyen de surveillance d’un NAS.** Des défauts pouvant empêcher certaines alertes ont été identifiés, et la procédure d’installation reste à corriger et à valider.
+> **Cette version ne doit pas être utilisée comme seul moyen de surveillance d’un NAS.** Les défauts identifiés sur les alertes et la procédure d’installation ont été corrigés en v0.4.0, mais ces corrections n’ont pas encore été validées sur matériel.
 >
 > Le mode avancé affiche actuellement des **données de démonstration pour le CPU et les disques**. Ses réglages d’alertes matérielles ne sont pas encore opérationnels.
 >

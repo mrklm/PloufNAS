@@ -13,6 +13,20 @@ et ce projet adhère au [versionnage sémantique](https://semver.org/lang/fr/).
 - joindre un fichier STL pour mettre l'arduino dans le compartiement cdrom
   avec LCD et bouton en facade + capteurs int/ext ?
 
+### Corrigé
+- Alerte « pas de données » active dès le démarrage (un capteur muet n'était jamais signalé)
+- Une notification ntfy en échec est retentée au lieu d'être perdue
+- Lignes série tronquées et valeurs hors plage ignorées (fausses valeurs d'humidité)
+- Arduino débranché : reconnexion automatique au lieu d'un plantage et d'une rafale de notifications
+- Arduino : la lecture du SHT31 est vérifiée, une ligne `ERR` est envoyée en cas d'échec,
+  et l'initialisation du capteur est retentée
+
+### Ajouté
+- Hystérésis sur les seuils de température et d'humidité
+- Alerte unique si le CSV ne peut pas être écrit
+- Journalisation via `logging`, visible en direct dans `journalctl`
+- Tests unitaires (`tests/test_monitor_climat.py`)
+
 ## [0.3.0] - 2026-09-18
 
 ### Modifié

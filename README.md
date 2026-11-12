@@ -338,11 +338,29 @@ Tous les paramètres sont regroupés en haut de `monitor_climat.py` :
 | `DELAI_SANS_DONNEES` | Délai avant alerte "pas de données" | `15 * 60` (15 min) |
 | `INTERVALLE_LECTURE` | Fréquence de lecture du port série | `5` (secondes) |
 | `INTERVALLE_ECRITURE` | Fréquence d'écriture dans le CSV | `60` (secondes) |
+| `TEMP_HYSTERESIS` | Écart sous le seuil avant le retour à la normale (température) | `1.0` (°C) |
+| `HUM_HYSTERESIS` | Écart sous le seuil avant le retour à la normale (humidité) | `2.0` (%) |
+| `DELAI_RECONNEXION` | Délai entre deux tentatives d'ouverture du port série | `10` (secondes) |
 
 **Logique anti-spam** : le script n'envoie une notification **qu'aux transitions** :
 - Normal → Alerte : 1 notification
 - Alerte → Normal : 1 notification (retour à la normale)
 - Alerte → Alerte : aucune notification (pas de spam)
+- Le retour à la normale n'a lieu que sous `seuil - hystérésis` (ex. 78 % pour un seuil à 80 %), pour éviter les rafales quand la valeur oscille autour du seuil.
+- Si l'envoi d'une notification échoue (ntfy indisponible), l'état n'est pas modifié : la notification est retentée au cycle suivant.
+
+**Robustesse** :
+- L'alerte « pas de données » est active dès le démarrage : un capteur muet dès le départ est aussi signalé.
+- Un Arduino débranché ne fait plus planter le service : le port est rouvert automatiquement, et l'absence de données déclenche l'alerte au bout de `DELAI_SANS_DONNEES`.
+- Les lignes série tronquées ou les valeurs hors plage sont ignorées.
+- L'Arduino envoie `ERR,...` quand la lecture du SHT31 échoue. Ces lignes ne comptent pas comme des mesures.
+- Si le CSV ne peut pas être écrit (volume non monté...), une notification unique est envoyée et les alertes restent actives.
+
+**Tests** (depuis la racine du dépôt, sans matériel) :
+
+```bash
+python3 -m unittest discover -s tests
+```
 
 ---
 

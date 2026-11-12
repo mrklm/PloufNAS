@@ -203,19 +203,33 @@ def lire_smart(nom, executer=subprocess.run):
 # ============================================================
 # COLLECTEUR
 # ============================================================
+def identifiant(disque):
+    """Clé stable d'un disque : le n° de série (le nom /dev/sdX peut changer au démarrage)."""
+    return disque.get("serie") or disque.get("nom")
+
+
 class Collecteur:
-    """Conserve l'état entre deux relevés (charge CPU, dernières valeurs des disques)."""
+    """Conserve l'état entre deux relevés (charge CPU, dernières valeurs des disques).
+
+    `precedent` : dernier relevé écrit (systeme.json) avant un redémarrage du service.
+    Les disques qu'il contenait sont considérés comme connus : s'ils ne réapparaissent
+    pas, ils sont signalés « absent » (cas d'un disque qui ne redémarre pas).
+    """
 
     def __init__(self, executer=subprocess.run, horloge=time.time, racine_hwmon=HWMON,
-                 proc_stat="/proc/stat", cpuinfo="/proc/cpuinfo"):
+                 proc_stat="/proc/stat", cpuinfo="/proc/cpuinfo", precedent=None):
         self.executer = executer
         self.horloge = horloge
         self.racine_hwmon = racine_hwmon
         self.proc_stat = proc_stat
         self.cpuinfo = cpuinfo
         self.stat_precedent = lire_proc_stat(proc_stat)
-        self.disques = {}            # nom -> dernier état connu
+        self.disques = {}            # identifiant -> dernier état connu
         self.dernier_releve_disques = None
+        for d in (precedent or {}).get("disques") or []:
+            # Un disque déjà absent avant le redémarrage est oublié (retrait volontaire)
+            if isinstance(d, dict) and d.get("etat") in ("actif", "veille", "indisponible"):
+                self.disques[identifiant(d)] = d
 
     def releve_cpu(self):
         modele, freq = infos_cpuinfo(self.cpuinfo)
@@ -236,17 +250,27 @@ class Collecteur:
                 and maintenant - self.dernier_releve_disques < INTERVALLE_DISQUES):
             return list(self.disques.values())
         self.dernier_releve_disques = maintenant
+        liste = lister_disques(self.executer)
+        if not liste and self.disques:
+            # lsblk en échec : ne pas déclarer tous les disques absents d'un coup
+            return list(self.disques.values())
         presents = {}
-        for disque in lister_disques(self.executer):
+        for disque in liste:
             smart = lire_smart(disque["nom"], self.executer)
-            ancien = self.disques.get(disque["nom"], {})
+            ident = identifiant(disque)
+            ancien = self.disques.get(ident, {})
             if smart["etat"] == "actif":
-                info = dict(disque, **smart, releve=maintenant)
+                info = dict(disque, **smart, releve=maintenant, echecs=0)
             else:
                 # En veille ou illisible : on garde les dernières valeurs connues
-                info = dict(ancien, **disque, etat=smart["etat"],
-                            message=smart.get("message"))
-            presents[disque["nom"]] = info
+                info = dict(ancien, **disque, etat=smart["etat"], message=smart.get("message"))
+                info["echecs"] = ancien.get("echecs", 0) + 1 if smart["etat"] == "indisponible" else 0
+            info.pop("absent_depuis", None)
+            presents[ident] = info
+        for ident, ancien in self.disques.items():
+            if ident not in presents:
+                presents[ident] = dict(ancien, etat="absent",
+                                       absent_depuis=ancien.get("absent_depuis") or maintenant)
         self.disques = presents
         return list(presents.values())
 

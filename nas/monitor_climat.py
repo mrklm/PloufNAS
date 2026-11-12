@@ -38,6 +38,7 @@ INTERVALLE_ECRITURE = 60       # secondes entre deux écritures dans le CSV
 INTERVALLE_SYSTEME  = 60       # secondes entre deux relevés matériels (disques : toutes les 5 min)
 HYSTERESIS_CPU      = 3.0      # °C sous le seuil avant le retour à la normale
 HYSTERESIS_DISQUE   = 2.0      # °C
+ECHECS_DISQUE_MUET  = 2        # relevés SMART ratés de suite avant l'alerte « ne répond plus »
 DELAI_RECONNEXION   = 10       # secondes entre deux tentatives d'ouverture du port
 
 # Plages physiquement plausibles (capteur SHT31) : au-delà, la ligne est rejetée
@@ -355,6 +356,29 @@ class AlertesSysteme:
         for cle in [k for k in self.etats if k.startswith(prefixe)]:
             del self.etats[cle]
 
+    def _verifier_presence(self, ident, nom, d):
+        cle = f"absent:{ident}"
+        etat = d.get("etat")
+        if etat == "absent":
+            alerte = True
+            message = (f"💽 Le disque {nom} n'apparaît plus dans la liste des disques "
+                       "(débranché ou défaillant).\nVérifiez l'état du RAID et vos sauvegardes.")
+        elif etat == "indisponible":
+            # Un seul relevé raté ne suffit pas : on attend qu'il se répète
+            alerte = True if d.get("echecs", 0) >= ECHECS_DISQUE_MUET else None
+            detail = f" ({d['message']})" if d.get("message") else ""
+            message = (f"💽 Le disque {nom} ne répond plus aux requêtes SMART{detail}.\n"
+                       "Vérifiez l'état du RAID et vos sauvegardes.")
+        else:
+            alerte, message = False, ""
+        if alerte is None:
+            return
+        self._transition(
+            cle, alerte,
+            "[URGENT] Disque disparu ou muet", message,
+            "[OK] Disque de nouveau detecte",
+            f"💽 Le disque {nom} répond de nouveau.")
+
     def verifier(self, releve, reglages):
         cpu = releve.get("cpu") or {}
         r_cpu = reglages.get("cpu", {})
@@ -373,16 +397,23 @@ class AlertesSysteme:
 
         r_temp = reglages.get("disks", {})
         r_smart = reglages.get("smart", {})
+        r_absent = reglages.get("absent", {})
+        if not r_absent.get("enabled"):
+            self._desactiver("absent:")
         if not r_temp.get("enabled"):
             self._desactiver("temp:")
         if not r_smart.get("enabled"):
             self._desactiver("smart:")
 
         for d in releve.get("disques") or []:
-            if d.get("etat") != "actif":
-                continue        # en veille ou illisible : on garde l'état précédent
             ident = d.get("serie") or d.get("nom")
             nom = nom_disque(d)
+
+            if r_absent.get("enabled"):
+                self._verifier_presence(ident, nom, d)
+
+            if d.get("etat") != "actif":
+                continue        # en veille, illisible ou absent : état température/SMART inchangé
 
             if r_temp.get("enabled") and d.get("temp") is not None:
                 cle, seuil = f"temp:{ident}", r_temp["threshold"]
@@ -461,9 +492,10 @@ def main():
                     "sera reçue.", suivi.chemin)
 
     surveillance = Surveillance()
-    collecteur = systeme.Collecteur()
-    alertes_systeme = AlertesSysteme()
     chemin_systeme = os.path.join(os.path.dirname(suivi.chemin), "systeme.json")
+    # Le dernier relevé permet de repérer un disque qui n'a pas redémarré avec le NAS
+    collecteur = systeme.Collecteur(precedent=systeme.lire(chemin_systeme))
+    alertes_systeme = AlertesSysteme()
     prochain_releve = time.monotonic() + INTERVALLE_SYSTEME / 2   # laisse démarrer le série
     # Retentée à chaque cycle tant qu'elle n'est pas passée : au démarrage du NAS,
     # le conteneur ntfy peut être prêt après ce service.

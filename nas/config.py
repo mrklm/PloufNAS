@@ -43,6 +43,7 @@ DEFAUTS = {
         "cpu": {"enabled": True, "threshold": 75},
         "disks": {"enabled": True, "threshold": 50},
         "smart": {"enabled": True},
+        "absent": {"enabled": True},      # disque disparu ou qui ne répond plus
         "gpu": {"enabled": False, "threshold": 80},
     },
     "couleurs": {

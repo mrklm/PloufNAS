@@ -238,6 +238,7 @@ function lireReglagesFormulaire() {
             cpu:   { enabled: coche('alertCpu'),   threshold: entier('alertCpuThreshold') },
             disks: { enabled: coche('alertDisks'), threshold: entier('alertDisksThreshold') },
             smart: { enabled: coche('alertSmart') },
+            absent: { enabled: coche('alertAbsent') },
             gpu:   { enabled: coche('alertGpu'),   threshold: entier('alertGpuThreshold') }
         },
         couleurs: { temperature: tempColor, humidity: humColor }
@@ -261,6 +262,7 @@ function remplirFormulaire(data) {
         document.getElementById('alertDisksThreshold').value = a.disks.threshold;
     }
     if (a.smart) document.getElementById('alertSmart').checked = a.smart.enabled;
+    if (a.absent) document.getElementById('alertAbsent').checked = a.absent.enabled;
     if (a.gpu) {
         document.getElementById('alertGpu').checked = a.gpu.enabled;
         document.getElementById('alertGpuThreshold').value = a.gpu.threshold;
@@ -356,7 +358,8 @@ function renderDisks(releve) {
         else if (d.smart_ok === false) etatSmart = '⚠️ Dégradé : ' + (d.problemes || []).join(', ');
         else etatSmart = 'inconnu';
 
-        if (d.etat === 'veille') badge = d.temp != null ? '💤 ' + d.temp + ' °C' : '💤 veille';
+        if (d.etat === 'absent') badge = '⚠️ absent';
+        else if (d.etat === 'veille') badge = d.temp != null ? '💤 ' + d.temp + ' °C' : '💤 veille';
         else if (d.temp != null) badge = d.temp + ' °C';
         else badge = '-- °C';
 
@@ -372,9 +375,11 @@ function renderDisks(releve) {
         if (d.heures != null) lignes.push('Fonctionnement : ' + d.heures.toLocaleString('fr-FR') + ' h');
         if (d.etat === 'veille') lignes.push('En veille : dernière valeur connue, le disque n\'est pas réveillé');
         if (d.etat === 'indisponible') lignes.push('Lecture impossible' + (d.message ? ' : ' + d.message : ''));
+        if (d.etat === 'absent') lignes.push('⚠️ Disque introuvable depuis ' +
+            new Date(d.absent_depuis * 1000).toLocaleString('fr-FR') + ' (dernières valeurs connues)');
         if (ancien) lignes.push('⚠️ Relevé ' + formaterAge(releve.age));
 
-        const enAlerte = d.smart_ok === false
+        const enAlerte = d.smart_ok === false || d.etat === 'absent' || (d.echecs || 0) >= 2
             || (r.enabled && d.temp != null && d.etat === 'actif' && d.temp > r.threshold);
         const div = creer('div', 'disk' + (d.etat !== 'actif' || ancien ? ' inactif' : ''));
         div.title = lignes.join('\n');

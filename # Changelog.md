@@ -16,6 +16,21 @@ et ce projet adhère au [versionnage sémantique](https://semver.org/lang/fr/).
   dashboard protégée, écoute derrière un reverse proxy HTTPS, limite des tentatives de
   mot de passe, services sans root
 
+## [0.7.0] - 2026-11-12
+
+### Ajouté
+- **Alerte « disque disparu ou muet »** : notification si un disque connu n'est plus listé
+  par le système, ou ne répond plus à SMART deux relevés de suite (~10 min) ; notification
+  de retour quand il répond de nouveau
+- Détection d'un disque qui n'a pas redémarré avec le NAS (souvenir du dernier relevé)
+- Case « Alerte disque disparu ou qui ne répond plus » dans le panneau Paramètres
+- Disque disparu affiché « ⚠️ absent » dans le dashboard, avec ses dernières valeurs connues
+
+### Modifié
+- Disques identifiés par leur n° de série : un changement de nom `/dev/sdX` au démarrage ne
+  provoque pas de fausse alerte
+- Un échec de `lsblk` ne déclare plus tous les disques absents
+
 ## [0.6.0] - 2026-11-12
 
 ### Ajouté
@@ -170,7 +185,8 @@ de démonstration pour le CPU et les disques.
 - Services systemd pour le démarrage automatique
 - Documentation initiale (README)
 
-[Non publié]: https://github.com/mrklm/PloufNAS/compare/v0.6.0...HEAD
+[Non publié]: https://github.com/mrklm/PloufNAS/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/mrklm/PloufNAS/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/mrklm/PloufNAS/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/mrklm/PloufNAS/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/mrklm/PloufNAS/compare/v0.4.0...v0.5.0

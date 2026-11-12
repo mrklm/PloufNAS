@@ -446,8 +446,11 @@ Dans `config.json` :
 | Température CPU | au-dessus du seuil (75 °C par défaut) | 3 °C sous le seuil |
 | Température disques | un disque au-dessus du seuil (50 °C par défaut) | 2 °C sous le seuil |
 | État SMART dégradé | auto-diagnostic SMART en échec, ou secteurs réalloués / en attente / irrécupérables | plus aucune anomalie |
+| Disque disparu ou muet | un disque connu n'est plus listé par le système, ou ne répond plus à SMART deux relevés de suite (~10 min) | le disque répond de nouveau |
 
-Le CPU est relevé chaque minute, les disques toutes les 5 minutes avec `smartctl -n standby` : **un disque en veille n'est jamais réveillé**, il garde sa dernière valeur connue et n'est pas pris en compte pour les alertes tant qu'il dort. Les disques sont identifiés par leur n° de série dans les notifications (le nom `/dev/sdX` peut changer au redémarrage). Le relevé est écrit dans `systeme.json`, que le dashboard lit sans interroger les disques.
+Le CPU est relevé chaque minute, les disques toutes les 5 minutes avec `smartctl -n standby` : **un disque en veille n'est jamais réveillé**, il garde sa dernière valeur connue et n'est pas pris en compte pour les alertes tant qu'il dort. Les disques sont identifiés par leur n° de série (le nom `/dev/sdX` peut changer au redémarrage, sans fausse alerte).
+
+**Disque disparu** : le service se souvient des disques du dernier relevé (`systeme.json`). Un disque qui ne revient pas après un redémarrage du NAS est donc signalé dès le démarrage. Si vous retirez un disque **volontairement**, l'alerte part une fois ; le disque est oublié au redémarrage suivant du service (`sudo systemctl restart monitor-climat`). Le relevé est écrit dans `systeme.json`, que le dashboard lit sans interroger les disques.
 
 Réglages avancés, en haut de `monitor_climat.py` (redémarrage du service nécessaire) :
 
@@ -502,6 +505,7 @@ Les tests du dashboard sont ignorés si Flask n'est pas installé sur la machine
 | Erreur `externally-managed-environment` | N'utilisez pas `pip3` : installez les paquets `python3-*` avec `apt` (étape 6) |
 | Mode complet : « Relevé matériel indisponible » | Le relevé est fait par `monitor-climat` : vérifiez qu'il tourne (`systemctl is-active monitor-climat`). Le premier relevé arrive 30 s après son démarrage |
 | Disque affiché `-- °C` ou « Lecture impossible » | Testez `sudo smartctl -j -H -A /dev/sdX` ; installez `smartmontools` si la commande est absente |
+| Disque affiché ⚠️ absent | Il n'est plus vu par le système : vérifiez câble, alimentation et `cat /proc/mdstat`. Retiré volontairement : `sudo systemctl restart monitor-climat` pour l'oublier |
 | Disque affiché 💤 | Il est en veille : PloufNAS ne le réveille pas et montre sa dernière valeur connue |
 | Images ou graphique absents du dashboard | Le dossier `monitoring/static/` est incomplet : recopiez `nas/static` (étape 5) |
 | **Erreur `latin-1 codec can't encode`** | Un emoji est présent dans un **titre** de notification. Les titres ne doivent contenir que de l'ASCII — les emojis sont OK dans le **corps** du message. |

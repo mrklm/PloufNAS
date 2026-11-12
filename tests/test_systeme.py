@@ -192,9 +192,100 @@ class TestCpu(unittest.TestCase):
         self.assertEqual(systeme.lire(chemin), {"cpu": {"temp": 40}})
 
 
+def lsblk(*disques):
+    return json.dumps({"blockdevices": [
+        {"name": nom, "model": "WDC", "serial": serie, "size": 3000592982016,
+         "rota": True, "tran": "sata", "type": "disk"} for nom, serie in disques]})
+
+
+class ExecuteurVariable(Executeur):
+    """Comme Executeur, mais la liste lsblk est modifiable entre deux relevés."""
+
+    def __init__(self, disques, smart=None):
+        super().__init__(smart)
+        self.liste = disques
+
+    def __call__(self, cmd, **kwargs):
+        if cmd[0] == "lsblk":
+            self.appels.append(cmd)
+            return subprocess.CompletedProcess(cmd, 0, lsblk(*self.liste), "")
+        return super().__call__(cmd, **kwargs)
+
+
+class TestDisquesAbsents(unittest.TestCase):
+    def setUp(self):
+        self.horloge = [1000.0]
+        self.ex = ExecuteurVariable([("sdb", "WD-1"), ("sdc", "WD-2")])
+
+    def collecteur(self, precedent=None):
+        return systeme.Collecteur(executer=self.ex, horloge=lambda: self.horloge[0],
+                                  precedent=precedent)
+
+    def suivant(self, c):
+        self.horloge[0] += systeme.INTERVALLE_DISQUES
+        return {d["serie"]: d for d in c.releve_disques()}
+
+    def test_disque_disparu_puis_revenu(self):
+        c = self.collecteur()
+        c.releve_disques()
+        self.ex.liste = [("sdb", "WD-1")]
+        disques = self.suivant(c)
+        self.assertEqual(disques["WD-2"]["etat"], "absent")
+        self.assertEqual(disques["WD-2"]["temp"], 35)          # dernière valeur connue
+        depuis = disques["WD-2"]["absent_depuis"]
+        self.assertEqual(self.suivant(c)["WD-2"]["absent_depuis"], depuis)
+        self.ex.liste = [("sdb", "WD-1"), ("sdc", "WD-2")]
+        disques = self.suivant(c)
+        self.assertEqual(disques["WD-2"]["etat"], "actif")
+        self.assertNotIn("absent_depuis", disques["WD-2"])
+
+    def test_noms_echanges_sans_fausse_alerte(self):
+        c = self.collecteur()
+        c.releve_disques()
+        self.ex.liste = [("sdc", "WD-1"), ("sdb", "WD-2")]     # noms inversés au redémarrage
+        disques = self.suivant(c)
+        self.assertEqual({d["etat"] for d in disques.values()}, {"actif"})
+        self.assertEqual(disques["WD-1"]["nom"], "sdc")
+
+    def test_echec_de_lsblk_ignore(self):
+        c = self.collecteur()
+        c.releve_disques()
+        self.ex.liste = []
+        self.assertEqual({d["etat"] for d in self.suivant(c).values()}, {"actif"})
+
+    def test_disque_absent_au_redemarrage(self):
+        avant = self.collecteur()
+        precedent = {"disques": avant.releve_disques()}
+        self.ex.liste = [("sdb", "WD-1")]                       # WD-2 n'a pas redémarré
+        disques = {d["serie"]: d for d in self.collecteur(precedent).releve_disques()}
+        self.assertEqual(disques["WD-2"]["etat"], "absent")
+
+    def test_disque_deja_absent_oublie_au_redemarrage(self):
+        precedent = {"disques": [{"nom": "sdd", "serie": "WD-3", "etat": "absent"}]}
+        disques = {d["serie"]: d for d in self.collecteur(precedent).releve_disques()}
+        self.assertNotIn("WD-3", disques)
+
+    def test_compteur_d_echecs(self):
+        c = self.collecteur()
+        c.releve_disques()
+        self.ex.smart["sdc"] = (2, "")
+        self.assertEqual(self.suivant(c)["WD-2"]["echecs"], 1)
+        self.assertEqual(self.suivant(c)["WD-2"]["echecs"], 2)
+        del self.ex.smart["sdc"]
+        self.assertEqual(self.suivant(c)["WD-2"]["echecs"], 0)
+
+    def test_veille_n_est_pas_un_echec(self):
+        c = self.collecteur()
+        c.releve_disques()
+        self.ex.smart["sdc"] = (systeme.CODE_VEILLE, "")
+        self.suivant(c)
+        self.assertEqual(self.suivant(c)["WD-2"]["echecs"], 0)
+
+
 REGLAGES = {"cpu": {"enabled": True, "threshold": 75},
             "disks": {"enabled": True, "threshold": 50},
             "smart": {"enabled": True},
+            "absent": {"enabled": True},
             "gpu": {"enabled": False, "threshold": 80}}
 
 
@@ -283,6 +374,38 @@ class TestAlertesSysteme(unittest.TestCase):
         a.verifier(releve(cpu=90), REGLAGES)
         a.verifier(releve(cpu=90), REGLAGES)
         self.assertEqual(n.titres.count("[ALERTE] Temperature CPU NAS"), 2)
+
+    def test_disque_disparu(self):
+        n = Notif()
+        a = mc.AlertesSysteme(n)
+        a.verifier(releve(disques=[disque()]), REGLAGES)
+        a.verifier(releve(disques=[disque(etat="absent", temp=55)]), REGLAGES)
+        a.verifier(releve(disques=[disque(etat="absent", temp=55)]), REGLAGES)
+        a.verifier(releve(disques=[disque()]), REGLAGES)
+        self.assertEqual(n.titres, ["[URGENT] Disque disparu ou muet",
+                                    "[OK] Disque de nouveau detecte"])
+        self.assertIn("WD-1", n.messages[0])
+        self.assertIn("n'apparaît plus", n.messages[0])
+
+    def test_disque_muet_apres_deux_echecs(self):
+        n = Notif()
+        a = mc.AlertesSysteme(n)
+        a.verifier(releve(disques=[disque(etat="indisponible", echecs=1)]), REGLAGES)
+        self.assertEqual(n.titres, [])
+        a.verifier(releve(disques=[disque(etat="indisponible", echecs=2,
+                                          message="I/O error")]), REGLAGES)
+        self.assertEqual(n.titres, ["[URGENT] Disque disparu ou muet"])
+        self.assertIn("I/O error", n.messages[0])
+        # Retour en veille : le disque répond (CHECK POWER MODE), l'alerte est levée
+        a.verifier(releve(disques=[disque(etat="veille")]), REGLAGES)
+        self.assertEqual(n.titres[-1], "[OK] Disque de nouveau detecte")
+
+    def test_disque_disparu_desactive(self):
+        n = Notif()
+        a = mc.AlertesSysteme(n)
+        reglages = dict(REGLAGES, absent={"enabled": False})
+        a.verifier(releve(disques=[disque(etat="absent")]), reglages)
+        self.assertEqual(n.titres, [])
 
     def test_releve_incomplet(self):
         n = Notif()

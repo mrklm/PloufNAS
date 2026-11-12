@@ -13,8 +13,22 @@ et ce projet adhère au [versionnage sémantique](https://semver.org/lang/fr/).
 - joindre un fichier STL pour mettre l'arduino dans le compartiement cdrom
   avec LCD et bouton en facade + capteurs int/ext ?
 - Suite du mode « accès extérieur » (première étape livrée en 0.8.0) : authentification
-  ntfy par jeton (0.9.0), dashboard sans root et guide d'accès distant par VPN ou reverse
-  proxy HTTPS (0.10.0)
+  ntfy par jeton (1.1.0), dashboard sans root et guide d'accès distant par VPN ou reverse
+  proxy HTTPS (1.2.0)
+
+## [1.0.0] - 2026-11-12
+
+Première version stable, validée en conditions réelles sur OpenMediaVault 8 (Debian 13) :
+alertes climat et matérielles, redémarrage du NAS, mise à jour depuis les versions 0.x.
+
+### Modifié
+- README : le bandeau « version expérimentale » est remplacé par l'état de validation
+- Icônes du dashboard réduites à 256 pixels de large : 6,7 Mo → 0,3 Mo à chaque ouverture
+- Changelog renommé `CHANGELOG.md`
+- Sketch Arduino rangé dans `arduino/sht31_nas_monitor/` (dossier exigé par l'IDE Arduino)
+
+### Vérifié
+- Sketch Arduino téléversé et validé sur matériel : erreurs `ERR,...` signalées au NAS quand le capteur ne répond plus, reprise des mesures sans redémarrage quand il revient
 
 ## [0.8.0] - 2026-11-12
 
@@ -211,7 +225,8 @@ de démonstration pour le CPU et les disques.
 - Services systemd pour le démarrage automatique
 - Documentation initiale (README)
 
-[Non publié]: https://github.com/mrklm/PloufNAS/compare/v0.8.0...HEAD
+[Non publié]: https://github.com/mrklm/PloufNAS/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/mrklm/PloufNAS/compare/v0.8.0...v1.0.0
 [0.8.0]: https://github.com/mrklm/PloufNAS/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/mrklm/PloufNAS/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/mrklm/PloufNAS/compare/v0.5.1...v0.6.0

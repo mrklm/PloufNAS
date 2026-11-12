@@ -1,13 +1,9 @@
 # 💧 PloufNAS
 
-> [!WARNING]
-> 🚧 **PROJET EN DÉVELOPPEMENT — VERSION EXPÉRIMENTALE**
+> [!NOTE]
+> ✅ **Version 1.0 — stable.** Validée en conditions réelles sur OpenMediaVault 8 (Debian 13) : capteur SHT31 sur Arduino, processeur Intel Core i3, RAID de 5 disques WD Red et SSD système. Alertes climat, matériel (CPU, disques, SMART, disque disparu), redémarrage du NAS et mise à jour depuis les versions précédentes testés.
 >
-> **Cette version ne doit pas être utilisée comme seul moyen de surveillance d’un NAS.** Les défauts identifiés sur les alertes et la procédure d’installation ont été corrigés en v0.4.0, mais ces corrections n’ont pas encore été validées sur matériel.
->
-> Le mode complet affiche les **vraies données CPU et disques** depuis la v0.6.0. La détection du GPU n’est pas encore disponible.
->
-> Les corrections et les essais sur matériel sont prévus avant de considérer cette version comme fiable.
+> PloufNAS surveille votre NAS ; il ne remplace pas une **sauvegarde** de vos données. La détection du GPU n’est pas encore disponible.
 
 Un NAS, comme tout ordinateur, possède des capteurs de température mais pas de capteur d'humidité !
 
@@ -79,7 +75,7 @@ C'est pourquoi je vous propose un système complet et robuste de surveillance de
 1. Installez les bibliothèques suivantes via le gestionnaire de bibliothèques de l'IDE Arduino :
    - `LiquidCrystal I2C` (par Frank de Brabander)
    - `SHT31` (par Rob Tillaart)
-2. Téléversez le code situé dans `arduino/sht31_nas_monitor.ino`.
+2. Téléversez le code situé dans `arduino/sht31_nas_monitor/sht31_nas_monitor.ino`.
 3. Ouvrez le moniteur série à **9600 bauds** pour vérifier que les données `DATA,Temp,Hum` s'affichent.
 
 ### Étape 2 : Préparation du NAS (OpenMediaVault)
@@ -419,7 +415,7 @@ journalctl -u monitor-climat -n 20 --no-pager
 
 Une fois que tout fonctionne, vous pouvez supprimer `$MON/alertes.json` et, après quelques jours, la sauvegarde `$MON.sauvegarde-*`.
 
-> 💡 Le nouveau sketch Arduino (`arduino/sht31_nas_monitor.ino`) signale les erreurs de lecture du capteur. Il est conseillé de le téléverser, mais la surveillance fonctionne aussi avec l'ancien.
+> 💡 Le nouveau sketch Arduino (`arduino/sht31_nas_monitor/sht31_nas_monitor.ino`) signale les erreurs de lecture du capteur. Il est conseillé de le téléverser, mais la surveillance fonctionne aussi avec l'ancien.
 
 ---
 

@@ -5,6 +5,7 @@ Lancement : python3 dashboard.py   →   http://IP-DU-NAS:5000
 Utilise le serveur de production waitress s'il est installé (paquet python3-waitress),
 sinon le serveur intégré de Flask. Adresse, port, protection de la consultation et
 reverse proxy se règlent dans la section « dashboard » de config.json.
+Prévu pour tourner sans les droits root (compte « ploufnas », voir dashboard-climat.service).
 """
 import base64
 import csv
@@ -19,7 +20,7 @@ from flask import Flask, Response, jsonify, request, send_from_directory
 import config
 import systeme
 
-VERSION = "1.2.0"
+VERSION = "1.3.0"
 NB_POINTS = 30          # nombre de mesures renvoyées par /api (30 min à 1 mesure/min)
 
 # Limitation des mots de passe faux, par adresse IP
@@ -174,8 +175,11 @@ def controle_consultation():
         return None    # contrôle dédié (sans fenêtre de connexion du navigateur)
     try:
         cfg = config.charger()
-    except config.ConfigInvalide:
-        return None    # les routes signalent elles-mêmes une config invalide
+    except config.ConfigInvalide as e:
+        # Impossible de savoir si la consultation est protégée : on refuse plutôt qu'ouvrir
+        log.error("Configuration invalide : %s", e)
+        return Response("Configuration du NAS illisible ou invalide : consultez le journal "
+                        "(journalctl -u dashboard-climat).\n", 503, mimetype="text/plain")
     if not cfg["dashboard"]["consultation_protegee"]:
         return None
     if not cfg["mot_de_passe_hash"]:
@@ -263,9 +267,9 @@ def enregistrer_config():
         except config.ConfigInvalide as e:
             return erreur(str(e), 400)
         try:
-            config.enregistrer(nouvelle)
+            config.enregistrer_reglages(nouvelle)   # seuils, alertes, couleurs uniquement
         except OSError as e:
-            log.error("Écriture de config.json impossible : %s", e)
+            log.error("Écriture des réglages impossible : %s", e)
             return erreur("Impossible d'enregistrer la configuration sur le NAS.", 500)
 
     log.info("Réglages enregistrés depuis %s.", request.remote_addr)

@@ -96,6 +96,22 @@ class TestApi(unittest.TestCase):
         self.assertEqual(cfg["seuils"]["hum_max"], 70.0)
         self.assertEqual(cfg["ntfy_url"], "http://localhost:8080/topic-tres-secret")
 
+    def test_post_n_ecrit_que_les_reglages(self):
+        c_config, c_ntfy, _ = config.chemins()
+        avant = [open(c).read() for c in (c_config, c_ntfy)]
+        r = self.post({"seuils": {"temp_max": 28}}, auth("secret123"))
+        self.assertEqual(r.status_code, 200, r.get_json())
+        self.assertEqual([open(c).read() for c in (c_config, c_ntfy)], avant)
+        self.assertEqual(config.charger()["seuils"]["temp_max"], 28.0)
+
+    def test_config_illisible_page_refusee(self):
+        # Impossible de savoir si la consultation est protégée : la page n'est pas servie
+        with open(self.chemin_config, "w") as f:
+            f.write("{abîmé")
+        for chemin in ("/", "/api", "/static/js/app.js"):
+            with self.subTest(chemin=chemin):
+                self.assertEqual(self.client.get(chemin).status_code, 503)
+
     def test_post_valeur_invalide(self):
         r = self.post({"seuils": {"hum_max": 500}}, auth("secret123"))
         self.assertEqual(r.status_code, 400)

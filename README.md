@@ -225,35 +225,34 @@ ls -la $MON $MON/static
 
 **3. Créez et personnalisez la configuration :**
 
-Tous les réglages sont dans un seul fichier, `config.json`, partagé par la surveillance et le dashboard. Les chemins sont relatifs au dossier `monitoring` : vous n'avez pas à y recopier l'UUID.
+Les réglages sont répartis en trois fichiers, pour que le dashboard n'ait accès qu'au strict nécessaire (voir [Dashboard sans root](#dashboard-sans-root)) :
+
+| Fichier | Contenu | Accès du dashboard |
+|---|---|---|
+| `config.json` | port série, fichier CSV, empreinte du mot de passe, section `dashboard` | lecture |
+| `ntfy.json` | adresse ntfy (avec votre topic) et jeton | aucun |
+| `reglages/reglages.json` | seuils, alertes et couleurs | lecture et écriture |
+
+Les chemins sont relatifs au dossier `monitoring` : vous n'avez pas à y recopier l'UUID.
 
 ```bash
 cd $MON
-sudo python3 config.py --init         # crée config.json avec les valeurs par défaut
-sudo nano config.json                 # remplacez VOTRE-TOPIC dans "ntfy_url"
+sudo python3 config.py --init         # crée les trois fichiers avec les valeurs par défaut
+sudo nano ntfy.json                   # remplacez VOTRE-TOPIC dans "ntfy_url"
 sudo python3 config.py --mot-de-passe # mot de passe pour enregistrer les réglages depuis le dashboard
-sudo python3 config.py --verifier     # contrôle le fichier et affiche son contenu
+sudo python3 config.py --verifier     # contrôle la configuration et l'affiche
 ```
 
-Extrait de `config.json` :
+Contenu de `ntfy.json` :
 
 ```json
 {
-    "port_serie": "/dev/arduino_nas",
-    "fichier_csv": "climat.csv",
     "ntfy_url": "http://localhost:8080/VOTRE-TOPIC",
-    "mot_de_passe_hash": "pbkdf2_sha256$...",
-    "seuils": {
-        "temp_max": 30.0,
-        "hum_max": 80.0,
-        "temp_hysteresis": 1.0,
-        "hum_hysteresis": 2.0
-    },
-    ...
+    "ntfy_jeton": ""
 }
 ```
 
-> 🔒 `config.json` contient votre topic ntfy et l'empreinte du mot de passe : il est lisible par `root` uniquement et exclu du dépôt Git. Le mot de passe lui-même n'est jamais enregistré.
+> 🔒 Le mot de passe lui-même n'est jamais enregistré, seulement son empreinte. Les trois fichiers sont exclus du dépôt Git.
 
 ---
 
@@ -268,7 +267,7 @@ sudo apt install -y python3 python3-serial python3-flask python3-requests python
 
 > 💡 N'utilisez pas `sudo pip3 install` : sur OMV 7 (Debian 12), pip refuse d'installer des paquets dans le Python système (erreur `externally-managed-environment`). Les paquets `python3-*` de Debian font la même chose proprement et sont mis à jour avec le système.
 
-> ⚠️ Les services fournis dans `nas/*.service` utilisent `User=root` et `/usr/bin/python3` (Python système, pas de venv). C'est fonctionnel mais peu élégant côté sécurité. Pour un usage domestique sur réseau local, ça reste acceptable.
+> 💡 Les services utilisent `/usr/bin/python3` (Python système, pas de venv). La surveillance tourne en `root`, car elle lit le port série et l'état SMART des disques. Le dashboard, seul service accessible par le réseau, tourne sous un compte dédié sans droits (étape 8).
 
 ---
 
@@ -295,7 +294,24 @@ Si tout fonctionne → passez à systemd. Sinon → inspectez les erreurs affich
 
 ### Étape 8 : Installation des services systemd
 
-Les fichiers sont fournis dans `nas/`. Il faut les copier dans `/etc/systemd/system/` puis y remplacer `VOTRE_UUID` (variable `UUID` définie à l'étape 5) :
+**1. Créez le compte du dashboard** et réglez les droits des fichiers de configuration (variables `UUID` et `MON` de l'étape 5) :
+
+```bash
+# Compte système sans mot de passe ni connexion possible
+sudo useradd --system --no-create-home --shell /usr/sbin/nologin ploufnas
+
+# Le dashboard lit config.json, écrit dans reglages/, et ne peut pas lire ntfy.json
+sudo mkdir -p "${MON:?}/reglages"
+sudo chown -R ploufnas:ploufnas "${MON:?}/reglages" && sudo chmod 750 "${MON:?}/reglages"
+sudo chgrp ploufnas "${MON:?}/config.json" && sudo chmod 640 "${MON:?}/config.json"
+sudo chmod 600 "${MON:?}/ntfy.json"
+
+# Vérification : « OK » puis « refusé »
+sudo -u ploufnas test -r "${MON:?}/config.json" && echo OK
+sudo -u ploufnas test -r "${MON:?}/ntfy.json" || echo refusé
+```
+
+**2. Installez les services.** Les fichiers sont fournis dans `nas/`. Il faut les copier dans `/etc/systemd/system/` puis y remplacer `VOTRE_UUID` :
 
 ```bash
 sudo cp ~/PloufNAS/nas/monitor-climat.service /etc/systemd/system/
@@ -363,7 +379,7 @@ Checklist après installation :
 
 ### Mise à jour depuis une version précédente (≤ 0.4.0)
 
-Jusqu'à la version 0.4.0, le dashboard était généré par `setup_dashboard.py` et les réglages étaient écrits dans `monitor_climat.py`. Depuis la 0.5.0, ils sont dans `config.json`. En SSH sur le NAS :
+Jusqu'à la version 0.4.0, le dashboard était généré par `setup_dashboard.py` et les réglages étaient écrits dans `monitor_climat.py`. Depuis la 0.5.0, ils sont dans des fichiers de configuration. En SSH sur le NAS :
 
 ```bash
 UUID=collez-ici-votre-uuid
@@ -373,7 +389,7 @@ ls -d $MON                                    # doit afficher le dossier
 # 1. Récupérer la nouvelle version du dépôt
 cd ~/PloufNAS && git pull
 
-# 2. Noter votre topic ntfy actuel (il sera à reporter dans config.json)
+# 2. Noter votre topic ntfy actuel (il sera à reporter dans ntfy.json)
 grep NTFY_URL $MON/monitor_climat.py
 
 # 3. Arrêter les services et sauvegarder le dossier (dont l'historique climat.csv)
@@ -385,7 +401,7 @@ sudo apt update
 sudo apt install -y python3-serial python3-flask python3-requests python3-waitress smartmontools
 
 # 5. Supprimer les fichiers des anciennes versions
-#    (alertes.json est conservé : ses réglages sont repris dans config.json)
+#    (alertes.json est conservé : ses réglages sont repris automatiquement)
 # ${MON:?} : la commande est refusée si MON n'est pas défini (au lieu de viser /)
 sudo rm -f "${MON:?}"/setup_dashboard.py "${MON:?}"/index.html
 sudo rm -rf "${MON:?}"/assets "${MON:?}"/__pycache__
@@ -395,7 +411,7 @@ sudo cp -r ~/PloufNAS/nas/monitor_climat.py ~/PloufNAS/nas/config.py ~/PloufNAS/
            ~/PloufNAS/nas/dashboard.py ~/PloufNAS/nas/static $MON/
 cd $MON
 sudo python3 config.py --init
-sudo nano config.json                 # reportez le topic noté à l'étape 2 dans "ntfy_url"
+sudo nano ntfy.json                   # reportez le topic noté à l'étape 2 dans "ntfy_url"
 sudo python3 config.py --mot-de-passe
 sudo python3 config.py --verifier
 
@@ -406,7 +422,14 @@ sudo cp ~/PloufNAS/nas/99-arduino-nas.rules /etc/udev/rules.d/
 sudo udevadm control --reload-rules && sudo udevadm trigger
 ls -l /dev/arduino_nas
 
-# 8. Services systemd
+# 8. Compte du dashboard et droits des fichiers (voir étape 8.1 de l'installation)
+sudo useradd --system --no-create-home --shell /usr/sbin/nologin ploufnas
+sudo mkdir -p "${MON:?}/reglages"
+sudo chown -R ploufnas:ploufnas "${MON:?}/reglages" && sudo chmod 750 "${MON:?}/reglages"
+sudo chgrp ploufnas "${MON:?}/config.json" && sudo chmod 640 "${MON:?}/config.json"
+sudo chmod 600 "${MON:?}/ntfy.json"
+
+# 9. Services systemd
 sudo cp ~/PloufNAS/nas/monitor-climat.service ~/PloufNAS/nas/dashboard-climat.service /etc/systemd/system/
 sudo sed -i "s/VOTRE_UUID/$UUID/g" /etc/systemd/system/monitor-climat.service \
                                     /etc/systemd/system/dashboard-climat.service
@@ -414,7 +437,7 @@ grep VOTRE_UUID /etc/systemd/system/*-climat.service   # ne doit rien afficher
 sudo systemctl daemon-reload
 sudo systemctl enable --now monitor-climat dashboard-climat
 
-# 9. Vérifier
+# 10. Vérifier
 systemctl status monitor-climat dashboard-climat --no-pager
 journalctl -u monitor-climat -n 20 --no-pager
 ```
@@ -427,9 +450,9 @@ Une fois que tout fonctionne, vous pouvez supprimer `$MON/alertes.json` et, apr�
 
 ## 🔔 Personnalisation des alertes
 
-Les seuils se règlent dans le panneau **⚙️ Paramètres** du dashboard (section « Alertes climat », mot de passe requis) ou dans `config.json`. Ils sont pris en compte **sans redémarrer** le service : `monitor_climat.py` relit `config.json` dès qu'il change. Une configuration invalide est ignorée (l'ancienne reste active) et signalée dans `journalctl`.
+Les seuils se règlent dans le panneau **⚙️ Paramètres** du dashboard (section « Alertes climat », mot de passe requis) ou dans `reglages/reglages.json`. Ils sont pris en compte **sans redémarrer** le service : `monitor_climat.py` relit les fichiers de configuration dès qu'ils changent. Une configuration invalide est ignorée (l'ancienne reste active) et signalée dans `journalctl`.
 
-Dans `config.json` :
+Paramètres (`seuils.*` dans `reglages/reglages.json`, `ntfy_*` dans `ntfy.json`, les autres dans `config.json`) :
 
 | Paramètre | Description | Valeur par défaut |
 |---|---|---|
@@ -442,7 +465,7 @@ Dans `config.json` :
 | `port_serie` | Port série de l'Arduino | `/dev/arduino_nas` |
 | `fichier_csv` | Historique (relatif au dossier `monitoring`, ou chemin absolu) | `climat.csv` |
 
-**Alertes système** (panneau ⚙️ Paramètres → « Alertes système », ou `alertes_systeme` dans `config.json`) :
+**Alertes système** (panneau ⚙️ Paramètres → « Alertes système », ou `alertes_systeme` dans `reglages/reglages.json`) :
 
 | Alerte | Déclenchement | Retour à la normale |
 |---|---|---|
@@ -513,8 +536,9 @@ Les tests du dashboard sont ignorés si Flask n'est pas installé sur la machine
 | Images ou graphique absents du dashboard | Le dossier `monitoring/static/` est incomplet : recopiez `nas/static` (étape 5) |
 | **Erreur `latin-1 codec can't encode`** | Un emoji est présent dans un **titre** de notification. Les titres ne doivent contenir que de l'ASCII — les emojis sont OK dans le **corps** du message. |
 | Notification ntfy non reçue | Vérifiez que le conteneur tourne : `docker ps \| grep ntfy` |
+| Dashboard : « Configuration du NAS illisible ou invalide » | Droits des fichiers à revoir (étape 8.1), ou fichier abîmé : `sudo python3 config.py --verifier` et `journalctl -u dashboard-climat -n 20` |
 | ntfy inaccessible | Testez `curl http://localhost:8080/v1/health` sur le NAS |
-| `ntfy a refusé la notification (HTTP 401)` ou `(HTTP 403)` | Le serveur ntfy exige un jeton, ou refuse celui de `config.json` : voir [Protéger ntfy par un jeton](#protéger-ntfy-par-un-jeton-facultatif) |
+| `ntfy a refusé la notification (HTTP 401)` ou `(HTTP 403)` | Le serveur ntfy exige un jeton, ou refuse celui de `ntfy.json` : voir [Protéger ntfy par un jeton](#protéger-ntfy-par-un-jeton-facultatif) |
 | Alerte humidité non déclenchée | Le script lit le buffer série en entier (corrigé). Si le problème persiste, vérifiez le code Arduino. |
 
 ---
@@ -526,9 +550,33 @@ Les tests du dashboard sont ignorés si Flask n'est pas installé sur la machine
 - ✅ Après **5 mots de passe incorrects en 15 minutes**, l'adresse IP concernée est bloquée jusqu'à la fin de ce délai.
 - ✅ La page applique une politique de sécurité stricte (CSP : aucun script extérieur ni en ligne, pas d'affichage dans un cadre) et les réglages ne peuvent pas être envoyés depuis un autre site.
 - ✅ Restreindre l'accès au **LAN** via pare-feu
-- ✅ Les services tournent en `root` — acceptable en LAN, à durcir (user dédié) si exposé
+- ✅ Le dashboard tourne sous un compte dédié **sans droits**, dans un service systemd durci : il ne peut ni lire l'adresse ntfy et son jeton, ni modifier les scripts ; il n'écrit que les seuils, alertes et couleurs (voir [Dashboard sans root](#dashboard-sans-root))
 - ✅ Choisir un **nom de topic ntfy long et aléatoire** (il fait office de mot de passe)
 - ✅ Garder le système à jour (`sudo apt update && sudo apt upgrade`)
+
+### Dashboard sans root
+
+Le dashboard est le seul service accessible par le réseau : s'il présentait une faille, il ne faudrait pas qu'elle donne la main sur le NAS. Depuis la 1.3.0 :
+
+- il tourne sous le compte système `ploufnas`, sans mot de passe ni shell, dans un service systemd durci (système en lecture seule, aucun privilège possible) ;
+- il **lit** `config.json` (groupe `ploufnas`, droits `640`) pour vérifier le mot de passe, mais ne peut pas le modifier ;
+- il ne peut **pas lire** `ntfy.json` : impossible pour un attaquant d'envoyer de fausses notifications sur votre téléphone ;
+- il n'**écrit** que dans `reglages/`, et la surveillance n'y lit que les seuils, alertes et couleurs, toujours validés : un fichier falsifié ne peut rien faire d'autre que changer un seuil.
+
+**Passer à la 1.3.0 depuis une version 0.5.0 ou plus récente** (en SSH sur le NAS) :
+
+```bash
+UUID=collez-ici-votre-uuid
+MON=/srv/dev-disk-by-uuid-$UUID/monitoring
+cd ~/PloufNAS && git pull
+sudo cp nas/config.py nas/monitor_climat.py nas/dashboard.py "${MON:?}/" && sudo cp -r nas/static/. "${MON:?}/static/"
+
+# Répartition automatique de config.json en trois fichiers (vos réglages sont conservés)
+sudo systemctl restart monitor-climat
+ls "${MON:?}/ntfy.json" "${MON:?}/reglages/reglages.json"
+```
+
+Puis suivez l'[étape 8](#étape-8--installation-des-services-systemd) : création du compte et droits (8.1), copie du nouveau `dashboard-climat.service` avec remplacement de l'UUID (8.2), et enfin `sudo systemctl daemon-reload && sudo systemctl restart dashboard-climat`.
 
 ### Options du dashboard (section `dashboard` de `config.json`)
 
@@ -593,7 +641,7 @@ sudo systemctl restart monitor-climat    # envoie la notification de démarrage
 journalctl -u monitor-climat -n 5 --no-pager
 ```
 
-Le jeton est pris en compte sans redémarrage ; le redémarrage sert seulement à envoyer une notification de test. Il est conservé dans `config.json` (lisible par `root` uniquement) et n'est jamais transmis au navigateur.
+Le jeton est pris en compte sans redémarrage ; le redémarrage sert seulement à envoyer une notification de test. Il est conservé dans `ntfy.json` (lisible par `root` uniquement) et n'est jamais transmis au navigateur.
 
 **4. Connecter le téléphone.** Dans l'application ntfy : **Paramètres → Gérer les utilisateurs → Ajouter**, indiquez l'adresse du serveur et le compte `telephone`. La notification de démarrage doit apparaître.
 
@@ -603,7 +651,7 @@ Le jeton est pris en compte sans redémarrage ; le redémarrage sert seulement �
 
 > ⚠️ Hors du réseau local, `ntfy_url` doit commencer par `https://` : en HTTP, le jeton circule en clair. PloufNAS le signale au démarrage dans `journalctl`.
 >
-> Pour revenir sans authentification : retirez les deux variables `NTFY_AUTH_*` du fichier Compose et mettez `"ntfy_jeton": ""` dans `config.json`.
+> Pour revenir sans authentification : retirez les deux variables `NTFY_AUTH_*` du fichier Compose et mettez `"ntfy_jeton": ""` dans `ntfy.json`.
 
 ---
 

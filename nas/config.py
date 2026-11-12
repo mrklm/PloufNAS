@@ -1,7 +1,15 @@
 """Configuration partagée de PloufNAS (monitor_climat.py et dashboard.py).
 
-Un seul fichier, config.json, placé à côté des scripts. Il est créé avec les
-valeurs par défaut au premier lancement (en reprenant un éventuel alertes.json).
+Trois fichiers, à côté des scripts, pour que le dashboard (qui peut tourner sans
+les droits root) n'ait accès qu'au strict nécessaire :
+
+    config.json              port série, CSV, mot de passe, section « dashboard »
+                             (root ; lisible par le dashboard)
+    ntfy.json                adresse ntfy et jeton (root uniquement)
+    reglages/reglages.json   seuils, alertes et couleurs (modifiables par le dashboard)
+
+Ils sont créés avec les valeurs par défaut au premier lancement. Un config.json
+d'une version précédente (tout dans un seul fichier) est réparti automatiquement.
 
 Usage en ligne de commande (depuis le dossier monitoring) :
     sudo python3 config.py --init           crée config.json s'il n'existe pas
@@ -24,6 +32,12 @@ import tempfile
 DOSSIER = os.path.dirname(os.path.abspath(__file__))
 CHEMIN_CONFIG = os.path.join(DOSSIER, "config.json")
 CHEMIN_ANCIENNES_ALERTES = os.path.join(DOSSIER, "alertes.json")
+NOM_NTFY = "ntfy.json"
+DOSSIER_REGLAGES = "reglages"
+NOM_REGLAGES = "reglages.json"
+
+CLES_NTFY = ("ntfy_url", "ntfy_jeton")                       # rangées dans ntfy.json
+CLES_REGLAGES = ("seuils", "alertes_systeme", "couleurs")    # rangées dans reglages.json
 
 NTFY_NON_CONFIGURE = "http://localhost:8080/VOTRE-TOPIC"
 
@@ -192,38 +206,57 @@ def _depuis_anciennes_alertes(chemin):
     return reprise
 
 
-def charger(chemin=None, creer=True):
-    """Charge et valide la config. La crée (avec reprise d'alertes.json) si elle est absente.
+def chemins(chemin=None):
+    """Chemins de config.json, ntfy.json et reglages/reglages.json."""
+    chemin = os.path.abspath(chemin or CHEMIN_CONFIG)
+    dossier = os.path.dirname(chemin)
+    return (chemin, os.path.join(dossier, NOM_NTFY),
+            os.path.join(dossier, DOSSIER_REGLAGES, NOM_REGLAGES))
 
-    Lève ConfigInvalide si le fichier existe mais est illisible ou invalide.
-    """
-    chemin = chemin or CHEMIN_CONFIG
+
+def _lire_json(chemin):
+    """Objet JSON contenu dans le fichier, ou None s'il n'existe pas."""
     try:
         with open(chemin, encoding="utf-8") as f:
             contenu = f.read()
     except FileNotFoundError:
-        ancien = os.path.join(os.path.dirname(chemin), "alertes.json")
-        config = valider_config(_depuis_anciennes_alertes(ancien))
-        if creer:
-            enregistrer(config, chemin)
-        return config
+        return None
     try:
         donnees = json.loads(contenu)
     except ValueError as e:
         raise ConfigInvalide(f"{chemin} n'est pas un JSON valide : {e}") from e
-    return valider_config(donnees)
+    if not isinstance(donnees, dict):
+        raise ConfigInvalide(f"{chemin} doit contenir un objet JSON.")
+    return donnees
 
 
-def enregistrer(config, chemin=None):
-    """Écrit la config de façon atomique : un lecteur ne voit jamais un fichier à moitié écrit."""
-    chemin = chemin or CHEMIN_CONFIG
+def _ecrire_json(chemin, donnees, mode):
+    """Écriture atomique : un lecteur ne voit jamais un fichier à moitié écrit.
+
+    Un fichier existant garde son propriétaire, son groupe et ses droits (réglés à
+    l'installation) ; un nouveau fichier reçoit `mode`.
+    """
     dossier = os.path.dirname(os.path.abspath(chemin))
+    os.makedirs(dossier, exist_ok=True)
+    try:
+        # Un lien symbolique (dossier reglages/ modifiable par le dashboard) n'est jamais
+        # suivi : il est remplacé par un vrai fichier, sans recopier les droits de sa cible.
+        existant = None if os.path.islink(chemin) else os.stat(chemin)
+    except FileNotFoundError:
+        existant = None
     fd, temporaire = tempfile.mkstemp(dir=dossier, prefix=".config-", suffix=".tmp")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(config, f, indent=4, ensure_ascii=False)
+            json.dump(donnees, f, indent=4, ensure_ascii=False)
             f.write("\n")
-        os.chmod(temporaire, 0o600)   # contient le hash du mot de passe
+        if existant is None:
+            os.chmod(temporaire, mode)
+        else:
+            os.chmod(temporaire, existant.st_mode & 0o777)
+            try:
+                os.chown(temporaire, existant.st_uid, existant.st_gid)
+            except OSError:
+                pass    # sans les droits root : le fichier appartient à celui qui l'écrit
         os.replace(temporaire, chemin)
     except BaseException:
         try:
@@ -231,6 +264,94 @@ def enregistrer(config, chemin=None):
         except OSError:
             pass
         raise
+
+
+def _partie(config, cles):
+    return {k: config[k] for k in cles if k in config}
+
+
+def _partie_base(config):
+    return {k: v for k, v in config.items() if k not in CLES_NTFY + CLES_REGLAGES}
+
+
+def charger(chemin=None, creer=True):
+    """Charge et valide la configuration répartie dans les trois fichiers.
+
+    Avec `creer`, crée les fichiers absents (reprise d'alertes.json, puis répartition
+    d'un ancien config.json complet) ; sans les droits nécessaires, cette étape est
+    simplement sautée. ntfy.json illisible (dashboard sans root) : valeurs par défaut.
+    Lève ConfigInvalide si un fichier est illisible ou invalide.
+    """
+    c_config, c_ntfy, c_reglages = chemins(chemin)
+    try:
+        base = _lire_json(c_config)
+        reglages = _lire_json(c_reglages)
+    except PermissionError as e:
+        raise ConfigInvalide(f"Lecture refusée : {e.filename}. Vérifiez les droits du fichier "
+                             "(voir « Dashboard sans root » dans le README).") from e
+    try:
+        ntfy = _lire_json(c_ntfy)
+        ntfy_lisible = True
+    except PermissionError:
+        ntfy, ntfy_lisible = None, False
+
+    nouveau = base is None
+    if nouveau:
+        base = _depuis_anciennes_alertes(os.path.join(os.path.dirname(c_config), "alertes.json"))
+    # Les fichiers séparés priment ; sinon, valeurs d'un ancien config.json complet
+    donnees = _partie_base(base)
+    donnees.update(_partie(ntfy if ntfy is not None else base, CLES_NTFY))
+    donnees.update(_partie(reglages if reglages is not None else base, CLES_REGLAGES))
+    config = valider_config(donnees)
+
+    if creer:
+        try:
+            if ntfy is None and ntfy_lisible:
+                enregistrer_ntfy(config, c_config)
+            if reglages is None:
+                enregistrer_reglages(config, c_config)
+            if nouveau or any(k in base for k in CLES_NTFY + CLES_REGLAGES):
+                enregistrer_base(config, c_config)
+        except PermissionError:
+            pass    # dashboard sans root : la répartition sera faite par root
+    return config
+
+
+def cles_ignorees(chemin=None):
+    """Clés d'un config.json que les fichiers séparés rendent sans effet."""
+    c_config, c_ntfy, c_reglages = chemins(chemin)
+    try:
+        base = _lire_json(c_config) or {}
+    except (OSError, ConfigInvalide):
+        return []
+    ignorees = []
+    if os.path.exists(c_ntfy):
+        ignorees += [k for k in CLES_NTFY if k in base]
+    if os.path.exists(c_reglages):
+        ignorees += [k for k in CLES_REGLAGES if k in base]
+    return ignorees
+
+
+def enregistrer_base(config, chemin=None):
+    """config.json : contient l'empreinte du mot de passe."""
+    _ecrire_json(chemins(chemin)[0], _partie_base(config), 0o600)
+
+
+def enregistrer_ntfy(config, chemin=None):
+    """ntfy.json : adresse et jeton, lisibles par root uniquement."""
+    _ecrire_json(chemins(chemin)[1], _partie(config, CLES_NTFY), 0o600)
+
+
+def enregistrer_reglages(config, chemin=None):
+    """reglages/reglages.json : seuils, alertes et couleurs (rien de secret)."""
+    _ecrire_json(chemins(chemin)[2], _partie(config, CLES_REGLAGES), 0o644)
+
+
+def enregistrer(config, chemin=None):
+    """Écrit les trois fichiers."""
+    enregistrer_ntfy(config, chemin)
+    enregistrer_reglages(config, chemin)
+    enregistrer_base(config, chemin)
 
 
 def chemin_csv(config, dossier=None):
@@ -289,12 +410,14 @@ def saisir_non_vide(invite, essais=3):
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Configuration de PloufNAS")
     groupe = parser.add_mutually_exclusive_group(required=True)
-    groupe.add_argument("--init", action="store_true", help="crée config.json s'il n'existe pas")
+    groupe.add_argument("--init", action="store_true",
+                        help="crée les fichiers de configuration s'ils n'existent pas")
     groupe.add_argument("--mot-de-passe", action="store_true",
                         help="définit le mot de passe d'enregistrement des réglages du dashboard")
     groupe.add_argument("--jeton-ntfy", action="store_true",
                         help="enregistre le jeton d'accès ntfy (serveur ntfy avec authentification)")
-    groupe.add_argument("--verifier", action="store_true", help="valide et affiche config.json")
+    groupe.add_argument("--verifier", action="store_true",
+                        help="valide et affiche la configuration")
     args = parser.parse_args(argv)
 
     try:
@@ -304,10 +427,13 @@ def main(argv=None):
         print(f"Erreur : {e}", file=sys.stderr)
         return 1
 
+    c_config, c_ntfy, c_reglages = chemins()
     if args.init:
-        print(("Configuration existante : " if existait else "Configuration créée : ") + CHEMIN_CONFIG)
+        print(("Configuration existante : " if existait else "Configuration créée : ") + c_config)
+        print("  adresse ntfy et jeton : " + c_ntfy)
+        print("  seuils et alertes     : " + c_reglages)
         if config["ntfy_url"] == NTFY_NON_CONFIGURE:
-            print("Pensez à renseigner « ntfy_url » (votre topic) dans ce fichier.")
+            print(f"Pensez à renseigner « ntfy_url » (votre topic) dans {c_ntfy}.")
         if not config["mot_de_passe_hash"]:
             print("Pensez à définir le mot de passe : python3 config.py --mot-de-passe "
                   "(précédé de sudo si vous n'êtes pas root)")
@@ -322,7 +448,7 @@ def main(argv=None):
             print("Erreur : les deux saisies ne correspondent pas.", file=sys.stderr)
             return 1
         config["mot_de_passe_hash"] = hacher_mot_de_passe(mdp)
-        enregistrer(config)
+        enregistrer_base(config)
         print("Mot de passe enregistré.")
         return 0
 
@@ -334,7 +460,7 @@ def main(argv=None):
         if not jeton.startswith("tk_"):
             print("Attention : un jeton ntfy commence normalement par « tk_ ».")
         config["ntfy_jeton"] = jeton
-        enregistrer(config)
+        enregistrer_ntfy(config)
         print("Jeton ntfy enregistré. Il sera utilisé dès la prochaine notification.")
         return 0
 
@@ -342,7 +468,12 @@ def main(argv=None):
                      mot_de_passe_hash="(défini)" if config["mot_de_passe_hash"] else "",
                      ntfy_jeton="(défini)" if config["ntfy_jeton"] else "")
     print(json.dumps(affichage, indent=4, ensure_ascii=False))
-    print("\nConfiguration valide.")
+    print(f"\nFichiers : {c_config}, {c_ntfy}, {c_reglages}")
+    ignorees = cles_ignorees()
+    if ignorees:
+        print("Attention : dans config.json, ces clés sont sans effet (elles sont lues dans "
+              "ntfy.json ou reglages/reglages.json) : " + ", ".join(ignorees))
+    print("Configuration valide.")
     return 0
 
 

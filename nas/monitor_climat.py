@@ -14,9 +14,9 @@ import systeme
 # ============================================================
 # CONFIGURATION
 # ============================================================
-# Port série, fichier CSV, URL ntfy et seuils se règlent dans config.json
-# (voir config.py). Les valeurs ci-dessous sont remplacées au démarrage, puis à
-# chaque modification de config.json (par exemple depuis le dashboard).
+# Port série, fichier CSV, URL ntfy et seuils se règlent dans config.json, ntfy.json
+# et reglages/reglages.json (voir config.py). Les valeurs ci-dessous sont remplacées
+# au démarrage, puis à chaque modification de ces fichiers (par exemple depuis le dashboard).
 port_serie      = config.DEFAUTS["port_serie"]
 fichier_log     = config.chemin_csv(config.DEFAUTS)
 NTFY_URL        = config.DEFAUTS["ntfy_url"]
@@ -72,18 +72,22 @@ def appliquer_config(cfg):
 
 
 class SuiviConfig:
-    """Recharge config.json quand il a été modifié. Une config invalide est ignorée."""
+    """Recharge la config quand l'un de ses fichiers a été modifié. Une config invalide est ignorée."""
 
     def __init__(self, chemin=None):
         self.chemin = chemin or config.CHEMIN_CONFIG
         self.signature = None
 
     def _signature(self):
-        try:
-            st = os.stat(self.chemin)
-        except OSError:
-            return None
-        return (st.st_mtime_ns, st.st_size)
+        signature = []
+        for chemin in config.chemins(self.chemin):
+            try:
+                st = os.stat(chemin)
+            except OSError:
+                signature.append(None)
+            else:
+                signature.append((st.st_mtime_ns, st.st_size))
+        return None if signature[0] is None else tuple(signature)
 
     def charger_initial(self):
         cfg = config.charger(self.chemin)      # lève ConfigInvalide
@@ -100,7 +104,7 @@ class SuiviConfig:
         try:
             cfg = config.charger(self.chemin, creer=False)
         except ConfigInvalide as e:
-            log.error("config.json invalide, l'ancienne configuration reste active : %s", e)
+            log.error("Configuration invalide, l'ancienne reste active : %s", e)
             return False
         appliquer_config(cfg)
         log.info("Configuration rechargée : seuils %s°C / %s%%, hystérésis %s°C / %s%%.",
@@ -501,7 +505,7 @@ def main():
         sys.exit(1)
     if NTFY_URL == config.NTFY_NON_CONFIGURE:
         log.warning("ntfy_url n'est pas configurée dans %s : aucune notification ne "
-                    "sera reçue.", suivi.chemin)
+                    "sera reçue.", config.chemins(suivi.chemin)[1])
     if jeton_en_clair(NTFY_URL, NTFY_JETON):
         log.warning("Le jeton ntfy est envoyé en HTTP non chiffré vers %s : utilisez une "
                     "adresse https://.", urlsplit(NTFY_URL).hostname)

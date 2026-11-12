@@ -194,7 +194,7 @@ class TestRechargementConfig(unittest.TestCase):
         self.chemin = os.path.join(self.dossier.name, "config.json")
         # Sauvegarde des variables globales modifiées par appliquer_config()
         self.sauvegarde = {k: getattr(mc, k) for k in (
-            "port_serie", "fichier_log", "NTFY_URL", "TEMP_MAX", "HUM_MAX",
+            "port_serie", "fichier_log", "NTFY_URL", "NTFY_JETON", "TEMP_MAX", "HUM_MAX",
             "TEMP_HYSTERESIS", "HUM_HYSTERESIS")}
         self.patch = mock.patch.object(mc.config, "CHEMIN_CONFIG", self.chemin)
         self.patch.start()
@@ -205,11 +205,12 @@ class TestRechargementConfig(unittest.TestCase):
             setattr(mc, k, v)
         self.dossier.cleanup()
 
-    def ecrire(self, contenu):
-        with open(self.chemin, "w") as f:
+    def ecrire(self, contenu, fichier="reglages"):
+        chemin = dict(zip(("config", "ntfy", "reglages"), mc.config.chemins(self.chemin)))[fichier]
+        with open(chemin, "w") as f:
             f.write(contenu)
         # Garantit une signature différente même si l'écriture tombe dans la même ns
-        os.utime(self.chemin, ns=(time.time_ns(), time.time_ns() + self.decalage))
+        os.utime(chemin, ns=(time.time_ns(), time.time_ns() + self.decalage))
         self.decalage += 1_000_000
 
     decalage = 0
@@ -221,10 +222,25 @@ class TestRechargementConfig(unittest.TestCase):
         self.assertEqual(mc.fichier_log, os.path.join(self.dossier.name, "climat.csv"))
         self.assertFalse(suivi.recharger_si_modifiee())
 
-        self.ecrire(json.dumps({"seuils": {"hum_max": 65}, "ntfy_url": "http://n/t"}))
+        self.ecrire(json.dumps({"seuils": {"hum_max": 65}}))
         self.assertTrue(suivi.recharger_si_modifiee())
         self.assertEqual(mc.HUM_MAX, 65.0)
-        self.assertEqual(mc.NTFY_URL, "http://n/t")
+
+        self.ecrire(json.dumps({"ntfy_url": "http://n/t", "ntfy_jeton": "tk_a"}), "ntfy")
+        self.assertTrue(suivi.recharger_si_modifiee())
+        self.assertEqual((mc.NTFY_URL, mc.NTFY_JETON), ("http://n/t", "tk_a"))
+
+    def test_reglages_ne_modifient_ni_ntfy_ni_le_port(self):
+        # Fichier modifiable par le dashboard : seuls seuils, alertes et couleurs comptent
+        suivi = mc.SuiviConfig()
+        suivi.charger_initial()
+        self.ecrire(json.dumps({"seuils": {"hum_max": 70}, "ntfy_url": "http://pirate/t",
+                                "port_serie": "/dev/pirate", "fichier_csv": "/etc/pirate"}))
+        self.assertTrue(suivi.recharger_si_modifiee())
+        self.assertEqual(mc.HUM_MAX, 70.0)
+        self.assertEqual(mc.NTFY_URL, mc.config.DEFAUTS["ntfy_url"])
+        self.assertEqual(mc.port_serie, "/dev/arduino_nas")
+        self.assertEqual(mc.fichier_log, os.path.join(self.dossier.name, "climat.csv"))
 
     def test_config_invalide_ignoree(self):
         suivi = mc.SuiviConfig()

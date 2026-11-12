@@ -12,8 +12,26 @@ et ce projet adhère au [versionnage sémantique](https://semver.org/lang/fr/).
 - Ajout d'un second capteur pour comparaison ?
 - joindre un fichier STL pour mettre l'arduino dans le compartiement cdrom
   avec LCD et bouton en facade + capteurs int/ext ?
-- Suite du mode « accès extérieur » : dashboard sans root et guide d'accès distant par VPN
-  ou reverse proxy HTTPS (1.3.0)
+- Suite du mode « accès extérieur » : guide d'accès distant par VPN ou reverse proxy HTTPS
+
+## [1.3.0] - 2026-11-12
+
+### Modifié
+- **Dashboard sans root** : compte système `ploufnas` et service systemd durci (système en
+  lecture seule sauf `reglages/`, aucun privilège possible)
+- Configuration répartie en trois fichiers, répartition automatique de l'ancien `config.json` :
+  `config.json` (lu par le dashboard), `ntfy.json` (adresse ntfy et jeton, root uniquement)
+  et `reglages/reglages.json` (seuils, alertes et couleurs, seul fichier écrit par le dashboard)
+- La surveillance ne lit dans `reglages/reglages.json` que les seuils, alertes et couleurs :
+  un fichier falsifié ne peut changer ni ntfy, ni le port série, ni le fichier CSV
+- Les fichiers de configuration réécrits conservent leurs droits et leur groupe ; les liens
+  symboliques ne sont jamais suivis
+- `config.py --verifier` signale les clés de `config.json` devenues sans effet
+- README : création du compte `ploufnas`, droits des fichiers, procédure de passage à la 1.3.0
+
+### Sécurité
+- Configuration illisible ou invalide : le dashboard refuse de servir la page (erreur 503)
+  au lieu de l'ouvrir sans tenir compte de « consultation protégée »
 
 ## [1.2.0] - 2026-11-12
 
@@ -256,7 +274,8 @@ de démonstration pour le CPU et les disques.
 - Services systemd pour le démarrage automatique
 - Documentation initiale (README)
 
-[Non publié]: https://github.com/mrklm/PloufNAS/compare/v1.2.0...HEAD
+[Non publié]: https://github.com/mrklm/PloufNAS/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/mrklm/PloufNAS/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/mrklm/PloufNAS/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/mrklm/PloufNAS/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/mrklm/PloufNAS/compare/v0.8.0...v1.0.0

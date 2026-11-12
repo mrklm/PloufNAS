@@ -4,6 +4,7 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "nas"))
 
@@ -110,6 +111,36 @@ class TestFichier(unittest.TestCase):
         self.assertEqual(config.chemin_csv(cfg, "/srv/m"), "/srv/m/climat.csv")
         cfg["fichier_csv"] = "/autre/climat.csv"
         self.assertEqual(config.chemin_csv(cfg, "/srv/m"), "/autre/climat.csv")
+
+
+class TestCommandeMotDePasse(unittest.TestCase):
+    def setUp(self):
+        self.dossier = tempfile.TemporaryDirectory()
+        self.patch = mock.patch.object(config, "CHEMIN_CONFIG",
+                                       os.path.join(self.dossier.name, "config.json"))
+        self.patch.start()
+
+    def tearDown(self):
+        self.patch.stop()
+        self.dossier.cleanup()
+
+    def lancer(self, saisies):
+        with mock.patch.object(config.getpass, "getpass", side_effect=saisies), \
+             mock.patch("sys.stdout"), mock.patch("sys.stderr"):
+            return config.main(["--mot-de-passe"])
+
+    def test_entree_en_double_ignoree(self):
+        # Une touche Entrée en trop envoie une saisie vide à la confirmation
+        self.assertEqual(self.lancer(["motdepasse1", "", "motdepasse1"]), 0)
+        self.assertTrue(config.verifier_mot_de_passe(
+            "motdepasse1", config.charger()["mot_de_passe_hash"]))
+
+    def test_saisies_differentes(self):
+        self.assertEqual(self.lancer(["motdepasse1", "autrechose"]), 1)
+        self.assertEqual(config.charger()["mot_de_passe_hash"], "")
+
+    def test_trop_court(self):
+        self.assertEqual(self.lancer(["court"]), 1)
 
 
 class TestMotDePasse(unittest.TestCase):

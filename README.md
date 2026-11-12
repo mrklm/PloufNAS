@@ -381,8 +381,9 @@ sudo apt install -y python3-serial python3-flask python3-requests
 
 # 5. Supprimer les fichiers des anciennes versions
 #    (alertes.json est conservé : ses réglages sont repris dans config.json)
-sudo rm -f $MON/setup_dashboard.py $MON/index.html
-sudo rm -rf $MON/assets $MON/__pycache__
+# ${MON:?} : la commande est refusée si MON n'est pas défini (au lieu de viser /)
+sudo rm -f "${MON:?}"/setup_dashboard.py "${MON:?}"/index.html
+sudo rm -rf "${MON:?}"/assets "${MON:?}"/__pycache__
 
 # 6. Copier la nouvelle version, puis créer la configuration
 sudo cp -r ~/PloufNAS/nas/monitor_climat.py ~/PloufNAS/nas/config.py \

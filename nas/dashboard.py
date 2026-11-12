@@ -14,7 +14,7 @@ from flask import Flask, jsonify, request, send_from_directory
 
 import config
 
-VERSION = "0.5.0"
+VERSION = "0.5.1"
 NB_POINTS = 30          # nombre de mesures renvoyées par /api (30 min à 1 mesure/min)
 PORT = 5000
 

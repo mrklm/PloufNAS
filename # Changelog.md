@@ -12,6 +12,16 @@ et ce projet adhère au [versionnage sémantique](https://semver.org/lang/fr/).
 - Ajout d'un second capteur pour comparaison ?
 - joindre un fichier STL pour mettre l'arduino dans le compartiement cdrom
   avec LCD et bouton en facade + capteurs int/ext ?
+- Mode « accès extérieur » optionnel : authentification ntfy par jeton, consultation du
+  dashboard protégée, écoute derrière un reverse proxy HTTPS, limite des tentatives de
+  mot de passe, services sans root
+
+## [0.5.1] - 2026-11-12
+
+### Corrigé
+- `config.py --mot-de-passe` : une saisie vide (touche Entrée en double) est redemandée
+  au lieu de faire échouer la confirmation
+- README : les commandes `rm` de la mise à jour refusent de s'exécuter si `MON` n'est pas défini
 
 ## [0.5.0] - 2026-11-12
 
@@ -139,7 +149,8 @@ de démonstration pour le CPU et les disques.
 - Services systemd pour le démarrage automatique
 - Documentation initiale (README)
 
-[Non publié]: https://github.com/mrklm/PloufNAS/compare/v0.5.0...HEAD
+[Non publié]: https://github.com/mrklm/PloufNAS/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/mrklm/PloufNAS/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/mrklm/PloufNAS/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/mrklm/PloufNAS/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/mrklm/PloufNAS/compare/v0.2.0...v0.3.0

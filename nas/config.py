@@ -251,6 +251,15 @@ def verifier_mot_de_passe(mot_de_passe, stocke):
 # ============================================================
 # LIGNE DE COMMANDE
 # ============================================================
+def saisir_non_vide(invite, essais=3):
+    """Saisie masquée ; une saisie vide (touche Entrée en double, par exemple) est redemandée."""
+    for _ in range(essais):
+        valeur = getpass.getpass(invite)
+        if valeur:
+            return valeur
+    return ""
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Configuration de PloufNAS")
     groupe = parser.add_mutually_exclusive_group(required=True)
@@ -272,15 +281,16 @@ def main(argv=None):
         if config["ntfy_url"] == NTFY_NON_CONFIGURE:
             print("Pensez à renseigner « ntfy_url » (votre topic) dans ce fichier.")
         if not config["mot_de_passe_hash"]:
-            print("Pensez à définir le mot de passe : sudo python3 config.py --mot-de-passe")
+            print("Pensez à définir le mot de passe : python3 config.py --mot-de-passe "
+                  "(précédé de sudo si vous n'êtes pas root)")
         return 0
 
     if args.mot_de_passe:
-        mdp = getpass.getpass("Nouveau mot de passe : ")
+        mdp = saisir_non_vide("Nouveau mot de passe : ")
         if len(mdp) < 8:
             print("Erreur : le mot de passe doit faire au moins 8 caractères.", file=sys.stderr)
             return 1
-        if getpass.getpass("Confirmez le mot de passe : ") != mdp:
+        if saisir_non_vide("Confirmez le mot de passe : ") != mdp:
             print("Erreur : les deux saisies ne correspondent pas.", file=sys.stderr)
             return 1
         config["mot_de_passe_hash"] = hacher_mot_de_passe(mdp)

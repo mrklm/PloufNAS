@@ -20,4 +20,6 @@ venv/
 # Données locales PloufNAS (contiennent le topic ntfy et le hash du mot de passe)
 config.json
 climat.csv
+systeme.json
+.systeme-*.tmp
 .config-*.tmp

@@ -8,6 +8,7 @@ import requests
 import serial
 
 import config
+import systeme
 
 # ============================================================
 # CONFIGURATION
@@ -25,6 +26,8 @@ HUM_MAX         = config.DEFAUTS["seuils"]["hum_max"]           # %
 TEMP_HYSTERESIS = config.DEFAUTS["seuils"]["temp_hysteresis"]   # °C
 HUM_HYSTERESIS  = config.DEFAUTS["seuils"]["hum_hysteresis"]    # %
 
+ALERTES_SYSTEME = config.DEFAUTS["alertes_systeme"]   # CPU, disques, SMART
+
 # Réglages avancés (modifiables ici uniquement)
 # Alerte "pas de données" : délai sans réception avant alerte
 DELAI_SANS_DONNEES = 15 * 60   # 15 minutes
@@ -32,6 +35,9 @@ DELAI_SANS_DONNEES = 15 * 60   # 15 minutes
 # Fréquences
 INTERVALLE_LECTURE  = 5        # secondes entre deux lectures du port série
 INTERVALLE_ECRITURE = 60       # secondes entre deux écritures dans le CSV
+INTERVALLE_SYSTEME  = 60       # secondes entre deux relevés matériels (disques : toutes les 5 min)
+HYSTERESIS_CPU      = 3.0      # °C sous le seuil avant le retour à la normale
+HYSTERESIS_DISQUE   = 2.0      # °C
 DELAI_RECONNEXION   = 10       # secondes entre deux tentatives d'ouverture du port
 
 # Plages physiquement plausibles (capteur SHT31) : au-delà, la ligne est rejetée
@@ -49,7 +55,7 @@ log = logging.getLogger("monitor_climat")
 def appliquer_config(cfg):
     """Reporte une config validée dans les variables utilisées par le script."""
     global port_serie, fichier_log, NTFY_URL
-    global TEMP_MAX, HUM_MAX, TEMP_HYSTERESIS, HUM_HYSTERESIS
+    global TEMP_MAX, HUM_MAX, TEMP_HYSTERESIS, HUM_HYSTERESIS, ALERTES_SYSTEME
     port_serie = cfg["port_serie"]
     fichier_log = config.chemin_csv(cfg)
     NTFY_URL = cfg["ntfy_url"]
@@ -58,6 +64,7 @@ def appliquer_config(cfg):
     HUM_MAX = seuils["hum_max"]
     TEMP_HYSTERESIS = seuils["temp_hysteresis"]
     HUM_HYSTERESIS = seuils["hum_hysteresis"]
+    ALERTES_SYSTEME = cfg["alertes_systeme"]
 
 
 class SuiviConfig:
@@ -308,6 +315,97 @@ class Surveillance:
 
 
 # ============================================================
+# ALERTES SYSTÈME (CPU, disques, SMART)
+# ============================================================
+def nom_disque(d):
+    """Désignation lisible et stable : le nom /dev peut changer, le n° de série non."""
+    details = ", ".join(x for x in (d.get("modele"), d.get("serie") and f"n° {d['serie']}") if x)
+    return f"{d.get('nom')} ({details})" if details else str(d.get("nom"))
+
+
+class AlertesSysteme:
+    """Mêmes règles que Surveillance : notification aux transitions uniquement, et état
+    modifié seulement si la notification est partie (sinon retentée au relevé suivant)."""
+
+    def __init__(self, notifier=envoyer_ntfy):
+        self.notifier = notifier
+        self.etats = {}     # clé -> "alerte" (absente = normal)
+
+    def _transition(self, cle, alerte, titre_alerte, message_alerte, titre_ok, message_ok):
+        en_alerte = self.etats.get(cle) == "alerte"
+        if alerte and not en_alerte:
+            if self.notifier(titre_alerte, message_alerte, priorite="urgent",
+                             tags="warning,rotating_light"):
+                self.etats[cle] = "alerte"
+        elif alerte is False and en_alerte:
+            if self.notifier(titre_ok, message_ok, priorite="default", tags="white_check_mark"):
+                del self.etats[cle]
+
+    @staticmethod
+    def _niveau(valeur, seuil, hysteresis, en_alerte):
+        """True : alerte ; False : normal ; None : zone d'hystérésis (pas de changement)."""
+        if valeur > seuil:
+            return True
+        if valeur <= seuil - hysteresis:
+            return False
+        return None if en_alerte else False
+
+    def _desactiver(self, prefixe):
+        # Alerte décochée dans le dashboard : on oublie l'état sans notifier
+        for cle in [k for k in self.etats if k.startswith(prefixe)]:
+            del self.etats[cle]
+
+    def verifier(self, releve, reglages):
+        cpu = releve.get("cpu") or {}
+        r_cpu = reglages.get("cpu", {})
+        if not r_cpu.get("enabled"):
+            self._desactiver("cpu")
+        elif cpu.get("temp") is not None:
+            seuil = r_cpu["threshold"]
+            niveau = self._niveau(cpu["temp"], seuil, HYSTERESIS_CPU,
+                                  self.etats.get("cpu") == "alerte")
+            self._transition(
+                "cpu", niveau,
+                "[ALERTE] Temperature CPU NAS",
+                f"🔥 Processeur à {cpu['temp']} °C (seuil {seuil} °C).",
+                "[OK] Temperature CPU revenue a la normale",
+                f"🔥 Processeur à {cpu['temp']} °C.")
+
+        r_temp = reglages.get("disks", {})
+        r_smart = reglages.get("smart", {})
+        if not r_temp.get("enabled"):
+            self._desactiver("temp:")
+        if not r_smart.get("enabled"):
+            self._desactiver("smart:")
+
+        for d in releve.get("disques") or []:
+            if d.get("etat") != "actif":
+                continue        # en veille ou illisible : on garde l'état précédent
+            ident = d.get("serie") or d.get("nom")
+            nom = nom_disque(d)
+
+            if r_temp.get("enabled") and d.get("temp") is not None:
+                cle, seuil = f"temp:{ident}", r_temp["threshold"]
+                niveau = self._niveau(d["temp"], seuil, HYSTERESIS_DISQUE,
+                                      self.etats.get(cle) == "alerte")
+                self._transition(
+                    cle, niveau,
+                    "[ALERTE] Temperature disque NAS",
+                    f"🌡️ Disque {nom} à {d['temp']} °C (seuil {seuil} °C).",
+                    "[OK] Temperature disque revenue a la normale",
+                    f"🌡️ Disque {nom} à {d['temp']} °C.")
+
+            if r_smart.get("enabled") and d.get("smart_ok") is not None:
+                self._transition(
+                    f"smart:{ident}", not d["smart_ok"],
+                    "[URGENT] Etat SMART degrade",
+                    f"💽 Disque {nom} : {', '.join(d.get('problemes') or [])}.\n"
+                    "Vérifiez le disque et vos sauvegardes.",
+                    "[OK] Etat SMART redevenu normal",
+                    f"💽 Disque {nom} : plus d'anomalie SMART.")
+
+
+# ============================================================
 # CSV
 # ============================================================
 def ecrire_csv(horodatage, temp, hum):
@@ -363,6 +461,10 @@ def main():
                     "sera reçue.", suivi.chemin)
 
     surveillance = Surveillance()
+    collecteur = systeme.Collecteur()
+    alertes_systeme = AlertesSysteme()
+    chemin_systeme = os.path.join(os.path.dirname(suivi.chemin), "systeme.json")
+    prochain_releve = time.monotonic() + INTERVALLE_SYSTEME / 2   # laisse démarrer le série
     # Retentée à chaque cycle tant qu'elle n'est pas passée : au démarrage du NAS,
     # le conteneur ntfy peut être prêt après ce service.
     demarrage_notifie = notifier_demarrage()
@@ -430,6 +532,17 @@ def main():
                         log.info("Temp : %s°C | Hum : %s%%", temp, hum)
 
         surveillance.verifier_silence()
+
+        if time.monotonic() >= prochain_releve:
+            prochain_releve = time.monotonic() + INTERVALLE_SYSTEME
+            try:
+                releve = collecteur.releve()
+                systeme.ecrire(releve, chemin_systeme)
+                alertes_systeme.verifier(releve, ALERTES_SYSTEME)
+            except Exception:
+                # Un souci de relevé matériel ne doit jamais arrêter la surveillance climat
+                log.exception("Relevé matériel impossible")
+
         if not demarrage_notifie:
             demarrage_notifie = notifier_demarrage()
         time.sleep(INTERVALLE_LECTURE)

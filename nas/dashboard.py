@@ -13,8 +13,9 @@ import time
 from flask import Flask, jsonify, request, send_from_directory
 
 import config
+import systeme
 
-VERSION = "0.5.1"
+VERSION = "0.6.0"
 NB_POINTS = 30          # nombre de mesures renvoyées par /api (30 min à 1 mesure/min)
 PORT = 5000
 
@@ -101,6 +102,17 @@ def api():
         log.error("Configuration invalide : %s", e)
         return jsonify([])
     return jsonify(dernieres_mesures(config.chemin_csv(cfg)))
+
+
+@app.route("/api/systeme")
+def api_systeme():
+    """Dernier relevé matériel écrit par monitor_climat.py (il ne relit pas les disques)."""
+    chemin = os.path.join(os.path.dirname(os.path.abspath(config.CHEMIN_CONFIG)), "systeme.json")
+    releve = systeme.lire(chemin)
+    if releve is None:
+        return jsonify({"disponible": False})
+    age = max(0, round(time.time() - releve.get("horodatage", 0)))
+    return jsonify(dict(releve, disponible=True, age=age))
 
 
 @app.route("/api/config", methods=["GET"])

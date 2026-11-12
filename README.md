@@ -5,7 +5,7 @@
 >
 > **Cette version ne doit pas être utilisée comme seul moyen de surveillance d’un NAS.** Les défauts identifiés sur les alertes et la procédure d’installation ont été corrigés en v0.4.0, mais ces corrections n’ont pas encore été validées sur matériel.
 >
-> Le mode avancé affiche actuellement des **données de démonstration pour le CPU et les disques**. Ses réglages d’alertes matérielles ne sont pas encore opérationnels.
+> Le mode complet affiche les **vraies données CPU et disques** depuis la v0.6.0. La détection du GPU n’est pas encore disponible.
 >
 > Les corrections et les essais sur matériel sont prévus avant de considérer cette version comme fiable.
 
@@ -40,6 +40,7 @@ C'est pourquoi je vous propose un système complet et robuste de surveillance de
 - **Thèmes personnalisés** : 16 thèmes intégrés (Sombres, Clairs, et "Pouêt-Pouêt") avec sélection aléatoire au chargement.
 - **Alertes push** : Notifications en temps réel via **ntfy** (auto-hébergé) si les seuils de température ou d'humidité sont dépassés.
 - **Alerte "pas de données"** : Notification si aucune donnée n'est reçue depuis plus de 15 minutes (détection d'un capteur débranché ou d'un service planté).
+- **Surveillance matérielle** : température et charge du CPU, température et état SMART de chaque disque, avec alertes ntfy (seuils réglables dans le dashboard). Les disques en veille ne sont jamais réveillés.
 - **Démarrage automatique** : Gestion via `systemd` pour une exécution en arrière-plan au démarrage du NAS.
 
 ---
@@ -215,6 +216,7 @@ sudo mkdir -p $MON
 # Scripts + dossier static/ (page web, styles, icônes, Chart.js)
 sudo cp -r ~/PloufNAS/nas/monitor_climat.py \
            ~/PloufNAS/nas/config.py \
+           ~/PloufNAS/nas/systeme.py \
            ~/PloufNAS/nas/dashboard.py \
            ~/PloufNAS/nas/static \
            $MON/
@@ -263,7 +265,7 @@ En SSH sur le NAS :
 
 ```bash
 sudo apt update
-sudo apt install -y python3 python3-serial python3-flask python3-requests curl
+sudo apt install -y python3 python3-serial python3-flask python3-requests smartmontools curl
 ```
 
 > 💡 N'utilisez pas `sudo pip3 install` : sur OMV 7 (Debian 12), pip refuse d'installer des paquets dans le Python système (erreur `externally-managed-environment`). Les paquets `python3-*` de Debian font la même chose proprement et sont mis à jour avec le système.
@@ -353,6 +355,7 @@ Checklist après installation :
 - [ ] La notification de démarrage `[OK]` arrive sur le téléphone
 - [ ] L'alerte humidité > 80 % se déclenche (souffler sur le capteur)
 - [ ] L'alerte température > 30 °C se déclenche (si testable)
+- [ ] En mode complet, le CPU et chaque disque affichent leur température (survol : modèle, SMART, heures de fonctionnement)
 
 ---
 
@@ -377,7 +380,7 @@ sudo cp -a $MON $MON.sauvegarde-$(date +%F)
 
 # 4. Dépendances (sans effet si elles sont déjà installées)
 sudo apt update
-sudo apt install -y python3-serial python3-flask python3-requests
+sudo apt install -y python3-serial python3-flask python3-requests smartmontools
 
 # 5. Supprimer les fichiers des anciennes versions
 #    (alertes.json est conservé : ses réglages sont repris dans config.json)
@@ -386,7 +389,7 @@ sudo rm -f "${MON:?}"/setup_dashboard.py "${MON:?}"/index.html
 sudo rm -rf "${MON:?}"/assets "${MON:?}"/__pycache__
 
 # 6. Copier la nouvelle version, puis créer la configuration
-sudo cp -r ~/PloufNAS/nas/monitor_climat.py ~/PloufNAS/nas/config.py \
+sudo cp -r ~/PloufNAS/nas/monitor_climat.py ~/PloufNAS/nas/config.py ~/PloufNAS/nas/systeme.py \
            ~/PloufNAS/nas/dashboard.py ~/PloufNAS/nas/static $MON/
 cd $MON
 sudo python3 config.py --init
@@ -436,6 +439,16 @@ Dans `config.json` :
 | `port_serie` | Port série de l'Arduino | `/dev/arduino_nas` |
 | `fichier_csv` | Historique (relatif au dossier `monitoring`, ou chemin absolu) | `climat.csv` |
 
+**Alertes système** (panneau ⚙️ Paramètres → « Alertes système », ou `alertes_systeme` dans `config.json`) :
+
+| Alerte | Déclenchement | Retour à la normale |
+|---|---|---|
+| Température CPU | au-dessus du seuil (75 °C par défaut) | 3 °C sous le seuil |
+| Température disques | un disque au-dessus du seuil (50 °C par défaut) | 2 °C sous le seuil |
+| État SMART dégradé | auto-diagnostic SMART en échec, ou secteurs réalloués / en attente / irrécupérables | plus aucune anomalie |
+
+Le CPU est relevé chaque minute, les disques toutes les 5 minutes avec `smartctl -n standby` : **un disque en veille n'est jamais réveillé**, il garde sa dernière valeur connue et n'est pas pris en compte pour les alertes tant qu'il dort. Les disques sont identifiés par leur n° de série dans les notifications (le nom `/dev/sdX` peut changer au redémarrage). Le relevé est écrit dans `systeme.json`, que le dashboard lit sans interroger les disques.
+
 Réglages avancés, en haut de `monitor_climat.py` (redémarrage du service nécessaire) :
 
 | Paramètre | Description | Valeur par défaut |
@@ -444,6 +457,7 @@ Réglages avancés, en haut de `monitor_climat.py` (redémarrage du service néc
 | `INTERVALLE_LECTURE` | Fréquence de lecture du port série | `5` (secondes) |
 | `INTERVALLE_ECRITURE` | Fréquence d'écriture dans le CSV | `60` (secondes) |
 | `DELAI_RECONNEXION` | Délai entre deux tentatives d'ouverture du port série | `10` (secondes) |
+| `INTERVALLE_SYSTEME` | Fréquence du relevé matériel (les disques : `INTERVALLE_DISQUES` de `systeme.py`, 5 min) | `60` (secondes) |
 
 **Logique anti-spam** : le script n'envoie une notification **qu'aux transitions** :
 - Normal → Alerte : 1 notification
@@ -486,6 +500,9 @@ Les tests du dashboard sont ignorés si Flask n'est pas installé sur la machine
 | Erreur "UUID not found" | Vérifiez que `VOTRE_UUID` a bien été remplacé |
 | Service bloqué au démarrage (`Dependency failed`) | Le volume n'est pas monté ou l'UUID est faux : `grep RequiresMountsFor /etc/systemd/system/*-climat.service` puis `ls /srv/` |
 | Erreur `externally-managed-environment` | N'utilisez pas `pip3` : installez les paquets `python3-*` avec `apt` (étape 6) |
+| Mode complet : « Relevé matériel indisponible » | Le relevé est fait par `monitor-climat` : vérifiez qu'il tourne (`systemctl is-active monitor-climat`). Le premier relevé arrive 30 s après son démarrage |
+| Disque affiché `-- °C` ou « Lecture impossible » | Testez `sudo smartctl -j -H -A /dev/sdX` ; installez `smartmontools` si la commande est absente |
+| Disque affiché 💤 | Il est en veille : PloufNAS ne le réveille pas et montre sa dernière valeur connue |
 | Images ou graphique absents du dashboard | Le dossier `monitoring/static/` est incomplet : recopiez `nas/static` (étape 5) |
 | **Erreur `latin-1 codec can't encode`** | Un emoji est présent dans un **titre** de notification. Les titres ne doivent contenir que de l'ASCII — les emojis sont OK dans le **corps** du message. |
 | Notification ntfy non reçue | Vérifiez que le conteneur tourne : `docker ps \| grep ntfy` |

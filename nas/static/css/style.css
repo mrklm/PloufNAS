@@ -102,6 +102,11 @@ body.mode-full .ambiance .chart { grid-column: 3; height: 130px; }
     display: inline-block;
 }
 
+.disk.inactif { opacity: 0.55; }
+.disks .indisponible { padding: 8px; opacity: 0.8; font-style: italic; }
+/* Valeur au-dessus du seuil d'alerte : lisible quel que soit le thème */
+.disk .temp.alerte, .system .block .temp.alerte { background: #B00020; color: #FFFFFF; font-weight: bold; }
+
 /* Bloc CPU + GPU */
 .system { display: flex; flex-direction: column; gap: 10px; }
 .system .block {

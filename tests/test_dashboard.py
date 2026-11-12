@@ -109,6 +109,16 @@ class TestApi(unittest.TestCase):
         self.assertEqual(r.status_code, 403)
         self.assertIn("--mot-de-passe", r.get_json()["message"])
 
+    def test_api_systeme(self):
+        self.assertEqual(self.client.get("/api/systeme").get_json(), {"disponible": False})
+        dashboard.systeme.ecrire({"horodatage": dashboard.time.time() - 120,
+                                  "cpu": {"temp": 41.0}, "disques": []},
+                                 os.path.join(self.dossier.name, "systeme.json"))
+        data = self.client.get("/api/systeme").get_json()
+        self.assertTrue(data["disponible"])
+        self.assertEqual(data["cpu"]["temp"], 41.0)
+        self.assertGreaterEqual(data["age"], 120)
+
     def test_fichiers_statiques(self):
         for chemin in ("/", "/static/js/app.js", "/static/css/style.css",
                        "/static/vendor/chart.umd.min.js", "/static/img/NAS.png"):

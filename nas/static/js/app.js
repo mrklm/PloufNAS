@@ -251,6 +251,7 @@ function remplirFormulaire(data) {
         document.getElementById('seuilHum').value = data.seuils.hum_max;
     }
     const a = data.alertes_systeme || {};
+    alertesSysteme = a;
     if (a.cpu) {
         document.getElementById('alertCpu').checked = a.cpu.enabled;
         document.getElementById('alertCpuThreshold').value = a.cpu.threshold;
@@ -295,6 +296,7 @@ async function saveConfig() {
             return { ok: false, code: res.status, message: data.message || ('Erreur ' + res.status) };
         }
         remplirFormulaire(data);
+        updateSysteme();   // recolore les valeurs selon les nouveaux seuils
         return { ok: true };
     } catch (e) {
         return { ok: false, code: 0, message: 'Le NAS est injoignable.' };
@@ -315,41 +317,106 @@ async function loadConfig() {
 }
 
 // ============================================================
-// DONNÉES DÉMO
+// MATÉRIEL (relevé écrit par le service de surveillance)
 // ============================================================
-function renderDisks() {
-    const disks = [
-        { name: 'SSD système', model: 'Samsung SSD 870 EVO 500GB', serial: 'S5Y2NG0R123456', capacity: '500 Go', smart: '✅ Sain', temp: 32, dev: '/dev/sda' },
-        { name: 'DD#1', model: 'WDC WD30EFRX-68EUZN0', serial: 'WD-WCC4N12345678', capacity: '3 To', smart: '✅ Sain', temp: 35, dev: '/dev/sdb' },
-        { name: 'DD#2', model: 'WDC WD30EFRX-68EUZN0', serial: 'WD-WCC4N23456789', capacity: '3 To', smart: '✅ Sain', temp: 36, dev: '/dev/sdc' },
-        { name: 'DD#3', model: 'WDC WD30EFRX-68EUZN0', serial: 'WD-WCC4N34567890', capacity: '3 To', smart: '✅ Sain', temp: 34, dev: '/dev/sdd' },
-        { name: 'DD#4', model: 'WDC WD30EFRX-68EUZN0', serial: 'WD-WCC4N45678901', capacity: '3 To', smart: '✅ Sain', temp: 37, dev: '/dev/sde' },
-        { name: 'DD#5', model: 'WDC WD30EFRX-68EUZN0', serial: 'WD-WCC4N56789012', capacity: '3 To', smart: '✅ Sain', temp: 35, dev: '/dev/sdf' }
-    ];
+let alertesSysteme = {};     // réglages d'alertes, pour colorer les valeurs en dépassement
+
+function formaterTaille(octets) {
+    if (!octets) return '?';
+    const to = octets / 1e12;
+    return to >= 1 ? to.toFixed(1).replace('.0', '') + ' To' : Math.round(octets / 1e9) + ' Go';
+}
+
+function formaterAge(secondes) {
+    if (secondes < 90) return "à l'instant";
+    if (secondes < 3600) return 'il y a ' + Math.round(secondes / 60) + ' min';
+    return 'il y a ' + Math.round(secondes / 3600) + ' h';
+}
+
+function creer(balise, classe, texte) {
+    const el = document.createElement(balise);
+    if (classe) el.className = classe;
+    if (texte !== undefined) el.textContent = texte;   // textContent : jamais de HTML injecté
+    return el;
+}
+
+function renderDisks(releve) {
     const container = document.getElementById('disksBlock');
-    container.innerHTML = '';
-    disks.forEach(d => {
-        const tooltip = `Modèle : ${d.model}\nN° série : ${d.serial}\nCapacité : ${d.capacity}\nÉtat SMART : ${d.smart}\nTempérature : ${d.temp} °C\nEmplacement : ${d.dev}`;
-        const div = document.createElement('div');
-        div.className = 'disk';
-        div.title = tooltip;
-        div.innerHTML = `
-            <img src="static/img/DD.png" alt="${d.name}" onerror="this.style.display='none'">
-            <div class="name">${d.name}</div>
-            <div class="temp">${d.temp} °C</div>
-        `;
+    container.replaceChildren();
+    if (!releve.disponible) {
+        container.appendChild(creer('div', 'indisponible',
+            'Relevé matériel indisponible : le service de surveillance est-il démarré ?'));
+        return;
+    }
+    const r = alertesSysteme.disks || {};
+    const ancien = releve.age > 15 * 60;
+    (releve.disques || []).forEach(d => {
+        let badge, etatSmart;
+        if (d.smart_ok === true) etatSmart = '✅ Sain';
+        else if (d.smart_ok === false) etatSmart = '⚠️ Dégradé : ' + (d.problemes || []).join(', ');
+        else etatSmart = 'inconnu';
+
+        if (d.etat === 'veille') badge = d.temp != null ? '💤 ' + d.temp + ' °C' : '💤 veille';
+        else if (d.temp != null) badge = d.temp + ' °C';
+        else badge = '-- °C';
+
+        const lignes = [
+            'Modèle : ' + (d.modele || '?'),
+            'N° série : ' + (d.serie || '?'),
+            'Capacité : ' + formaterTaille(d.taille),
+            'Type : ' + d.type + (d.connexion ? ' (' + d.connexion.toUpperCase() + ')' : ''),
+            'État SMART : ' + etatSmart,
+            'Température : ' + (d.temp != null ? d.temp + ' °C' : 'inconnue'),
+            'Emplacement : /dev/' + d.nom
+        ];
+        if (d.heures != null) lignes.push('Fonctionnement : ' + d.heures.toLocaleString('fr-FR') + ' h');
+        if (d.etat === 'veille') lignes.push('En veille : dernière valeur connue, le disque n\'est pas réveillé');
+        if (d.etat === 'indisponible') lignes.push('Lecture impossible' + (d.message ? ' : ' + d.message : ''));
+        if (ancien) lignes.push('⚠️ Relevé ' + formaterAge(releve.age));
+
+        const enAlerte = d.smart_ok === false
+            || (r.enabled && d.temp != null && d.etat === 'actif' && d.temp > r.threshold);
+        const div = creer('div', 'disk' + (d.etat !== 'actif' || ancien ? ' inactif' : ''));
+        div.title = lignes.join('\n');
+        const img = creer('img');
+        img.src = 'static/img/DD.png';
+        img.alt = d.nom;
+        img.onerror = () => { img.style.display = 'none'; };
+        div.append(img, creer('div', 'name', d.type + ' ' + d.nom),
+                   creer('div', 'temp' + (enAlerte ? ' alerte' : ''), badge));
         container.appendChild(div);
     });
 }
 
-function renderSystem() {
-    document.getElementById('cpuTemp').innerText = '45 °C';
-    const cpuTooltip = `Modèle : Intel Core i5-8500\nCœurs : 6\nFréquence : 3.0 GHz\nTempérature : 45 °C\nCharge : 12 %`;
-    document.getElementById('cpuBlock').title = cpuTooltip;
+function renderSystem(releve) {
+    const bloc = document.getElementById('cpuBlock');
+    const temp = document.getElementById('cpuTemp');
+    const cpu = releve.disponible ? (releve.cpu || {}) : {};
+    temp.textContent = cpu.temp != null ? cpu.temp + ' °C' : '-- °C';
+    const r = alertesSysteme.cpu || {};
+    temp.classList.toggle('alerte', !!(r.enabled && cpu.temp != null && cpu.temp > r.threshold));
+    bloc.title = releve.disponible ? [
+        'Modèle : ' + (cpu.modele || '?'),
+        'Threads : ' + (cpu.threads || '?'),
+        'Fréquence : ' + (cpu.frequence_mhz ? (cpu.frequence_mhz / 1000).toFixed(2) + ' GHz' : '?'),
+        'Température : ' + (cpu.temp != null ? cpu.temp + ' °C' : 'inconnue'),
+        'Charge : ' + (cpu.charge != null ? cpu.charge + ' %' : '?'),
+        'Relevé : ' + formaterAge(releve.age)
+    ].join('\n') : 'Relevé matériel indisponible';
 
-    document.getElementById('gpuTemp').innerText = '-- °C';
+    document.getElementById('gpuTemp').textContent = '-- °C';
     document.getElementById('gpuBlock').classList.add('disabled');
     document.getElementById('gpuBlock').title = 'Aucun GPU compatible détecté';
+}
+
+async function updateSysteme() {
+    let releve = { disponible: false };
+    try {
+        const res = await fetch('/api/systeme');
+        releve = await res.json();
+    } catch (e) { console.error('Erreur relevé matériel :', e); }
+    renderDisks(releve);
+    renderSystem(releve);
 }
 
 // ============================================================
@@ -423,10 +490,9 @@ if (window.ResizeObserver && chartContainer) {
 const prefs = appliquerPrefs();
 initThemes(prefs);
 initColorPickers();
-renderDisks();
-renderSystem();
 updateModeUI();
-loadConfig();
+loadConfig().then(updateSysteme);
+setInterval(updateSysteme, 60000);
 updateData();
 setInterval(updateData, 5000);
 

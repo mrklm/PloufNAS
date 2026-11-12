@@ -16,6 +16,27 @@ et ce projet adhère au [versionnage sémantique](https://semver.org/lang/fr/).
   dashboard protégée, écoute derrière un reverse proxy HTTPS, limite des tentatives de
   mot de passe, services sans root
 
+## [0.6.0] - 2026-11-12
+
+### Ajouté
+- **Vraies données matérielles** dans le mode complet du dashboard (fin des données de
+  démonstration) : modèle, température, fréquence et charge du CPU ; modèle, n° de série,
+  capacité, température, état SMART et heures de fonctionnement de chaque disque
+- **Alertes système opérationnelles** : température CPU, température disques et état SMART
+  dégradé (auto-diagnostic en échec, secteurs réalloués, en attente ou irrécupérables),
+  avec hystérésis et renvoi en cas d'échec de ntfy, comme pour le climat
+- Module `nas/systeme.py` ; le relevé est fait par le service de surveillance et écrit dans
+  `systeme.json`, lu par le dashboard (route `/api/systeme`)
+- Commande de vérification `python3 systeme.py`
+- Valeurs au-dessus du seuil affichées en rouge dans le dashboard
+- Tests du relevé matériel et des alertes système
+
+### Modifié
+- Les disques en veille ne sont **jamais réveillés** (`smartctl -n standby`) : leur dernière
+  valeur connue est affichée avec 💤
+- Dépendance `smartmontools` ajoutée à l'installation
+- Dashboard construit sans `innerHTML` pour les données des disques
+
 ## [0.5.1] - 2026-11-12
 
 ### Corrigé
@@ -149,7 +170,8 @@ de démonstration pour le CPU et les disques.
 - Services systemd pour le démarrage automatique
 - Documentation initiale (README)
 
-[Non publié]: https://github.com/mrklm/PloufNAS/compare/v0.5.1...HEAD
+[Non publié]: https://github.com/mrklm/PloufNAS/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/mrklm/PloufNAS/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/mrklm/PloufNAS/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/mrklm/PloufNAS/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/mrklm/PloufNAS/compare/v0.3.0...v0.4.0

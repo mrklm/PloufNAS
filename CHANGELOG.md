@@ -13,7 +13,20 @@ et ce projet adhère au [versionnage sémantique](https://semver.org/lang/fr/).
 - joindre un fichier STL pour mettre l'arduino dans le compartiement cdrom
   avec LCD et bouton en facade + capteurs int/ext ?
 - Suite du mode « accès extérieur » : dashboard sans root et guide d'accès distant par VPN
-  ou reverse proxy HTTPS (1.2.0)
+  ou reverse proxy HTTPS (1.3.0)
+
+## [1.2.0] - 2026-11-12
+
+### Ajouté
+- Dashboard : bouton **?** à droite de « Paramètres », qui ouvre une aide résumée en
+  5 sections (fermeture par ×, Échap ou clic à côté)
+
+### Modifié
+- Paramètres : mot de passe obligatoire dès qu'un seuil, une alerte ou une couleur est
+  modifié (bouton « Enregistrer sur le NAS » grisé et champ signalé tant qu'il manque) ;
+  l'affichage (mode, composants, thème) reste modifiable sans mot de passe
+- Paramètres : fermer le panneau sans enregistrer annule les modifications des réglages du NAS
+- Paramètres : fermeture par la touche Échap
 
 ### Corrigé
 - Guide « Protéger ntfy par un jeton » validé sur OMV 8 et précisé : recréation du
@@ -243,7 +256,8 @@ de démonstration pour le CPU et les disques.
 - Services systemd pour le démarrage automatique
 - Documentation initiale (README)
 
-[Non publié]: https://github.com/mrklm/PloufNAS/compare/v1.1.0...HEAD
+[Non publié]: https://github.com/mrklm/PloufNAS/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/mrklm/PloufNAS/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/mrklm/PloufNAS/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/mrklm/PloufNAS/compare/v0.8.0...v1.0.0
 [0.8.0]: https://github.com/mrklm/PloufNAS/compare/v0.7.0...v0.8.0

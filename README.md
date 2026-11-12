@@ -338,6 +338,10 @@ Pour trouver l'IP du NAS :
 hostname -I
 ```
 
+Le bouton **?**, à droite de **⚙️ Paramètres**, ouvre une aide résumée du dashboard (affichage, alertes, paramètres, dépannage).
+
+Dans **⚙️ Paramètres**, l'affichage (mode, composants, thème) est propre à chaque navigateur et se modifie librement. Les seuils, les alertes et les couleurs sont enregistrés sur le NAS : dès que l'un d'eux est modifié, le bouton devient **Enregistrer sur le NAS** et reste grisé tant que le mot de passe n'est pas saisi. Fermer le panneau sans enregistrer annule ces modifications.
+
 **Optionnel** — accès depuis l'extérieur : voir la section [🔐 Sécurité](#-sécurité). ⚠️ **N'exposez jamais le dashboard directement sur Internet**, sans HTTPS.
 
 ---

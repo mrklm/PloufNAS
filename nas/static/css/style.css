@@ -29,6 +29,8 @@ body {
     font-size: 0.9em; cursor: pointer; transition: all 0.2s;
 }
 .header button:hover { background: var(--accent); color: #fff; }
+.header .header-actions { display: flex; gap: 6px; }
+.header .bouton-aide { padding: 6px 10px; font-weight: bold; min-width: 30px; }
 
 /* ============================================= */
 /* BLOC AMBIANCE                                 */
@@ -193,6 +195,21 @@ body.mode-full .system { margin-bottom: 0; }
     padding: 6px 16px; border-radius: 5px; border: none;
     background: var(--accent); color: #fff; font-size: 0.9em; cursor: pointer;
 }
+.modal .actions button:disabled { opacity: 0.45; cursor: not-allowed; }
+/* Mot de passe manquant alors que des réglages du NAS ont été modifiés */
+.modal .number-row.requis input { border: 2px solid #B00020; }
+.modal .number-row.requis + .hint {
+    opacity: 1; background: #B00020; color: #FFFFFF; font-weight: bold;
+    padding: 3px 8px; border-radius: 4px;
+}
+
+/* Modale Aide */
+.modal.aide { max-width: 560px; line-height: 1.4; }
+.modal.aide p { margin: 0; }
+.modal.aide ul { margin: 0; padding-left: 18px; }
+.modal.aide li { margin: 3px 0; }
+.modal.aide code { font-size: 0.95em; background: var(--bg); padding: 0 3px; border-radius: 3px; }
+.modal.aide a { color: var(--accent); }
 
 /* ============================================= */
 /* RESPONSIVE (mobile)                           */

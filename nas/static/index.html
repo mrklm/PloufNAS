@@ -13,7 +13,10 @@
             <span class="title">PloufNAS</span>
             <span class="version" id="version"></span>
         </h1>
-        <button id="openSettings">⚙️ Paramètres</button>
+        <div class="header-actions">
+            <button id="openSettings">⚙️ Paramètres</button>
+            <button id="openHelp" class="bouton-aide" title="Aide" aria-label="Aide">?</button>
+        </div>
     </div>
 
     <!-- Bloc ambiance -->
@@ -186,7 +189,7 @@
             <!-- 7. Mot de passe -->
             <div class="section">
                 <h3>Enregistrement sur le NAS</h3>
-                <div class="number-row">
+                <div class="number-row" id="passwordRow">
                     <label for="settingsPassword">Mot de passe :</label>
                     <input type="password" id="settingsPassword" autocomplete="current-password">
                 </div>
@@ -196,6 +199,75 @@
             <div class="message" id="settingsMessage" role="status"></div>
             <div class="actions">
                 <button id="applySettings">Appliquer</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modale Aide -->
+    <div class="modal-overlay" id="helpModal">
+        <div class="modal aide">
+            <h2>
+                ? Aide
+                <button id="closeHelp" aria-label="Fermer">×</button>
+            </h2>
+
+            <div class="section">
+                <h3>PloufNAS en bref</h3>
+                <p>PloufNAS surveille la température et l'humidité autour de votre NAS (capteur
+                SHT31 relié à un Arduino), ainsi que la température du processeur et l'état des
+                disques. En cas de problème, il vous prévient par une notification ntfy sur votre
+                téléphone.</p>
+            </div>
+
+            <div class="section">
+                <h3>Le tableau de bord</h3>
+                <ul>
+                    <li>En haut : la dernière mesure du capteur. Le graphique montre les
+                        30 dernières mesures (une par minute).</li>
+                    <li>Mode complet : affiche aussi les disques et le processeur. Survolez-les pour
+                        voir le détail (modèle, état SMART, heures de fonctionnement…).</li>
+                    <li>💤 : disque en veille, dernière valeur connue (PloufNAS ne le réveille jamais).
+                        ⚠️ absent : disque introuvable.</li>
+                    <li>Valeur sur fond rouge : au-dessus du seuil d'alerte.</li>
+                </ul>
+            </div>
+
+            <div class="section">
+                <h3>Les alertes</h3>
+                <ul>
+                    <li>Température ou humidité au-dessus du seuil, ou plus aucune mesure du
+                        capteur pendant 15 minutes.</li>
+                    <li>Processeur ou disque trop chaud, état SMART dégradé, disque disparu ou qui
+                        ne répond plus.</li>
+                    <li>Une notification est envoyée quand le problème apparaît, puis quand tout
+                        revient à la normale (avec une petite marge, pour éviter les rafales).</li>
+                </ul>
+            </div>
+
+            <div class="section">
+                <h3>Les paramètres</h3>
+                <ul>
+                    <li>Affichage (mode, composants, thème) : propre à ce navigateur, sans mot de
+                        passe.</li>
+                    <li>Seuils, alertes et couleurs : enregistrés sur le NAS, mot de passe
+                        obligatoire. Ils s'appliquent aussitôt, sans redémarrage.</li>
+                    <li>Le mot de passe se définit sur le NAS :
+                        <code>sudo python3 config.py --mot-de-passe</code>. Après 5 essais
+                        incorrects, l'accès est bloqué 15 minutes.</li>
+                </ul>
+            </div>
+
+            <div class="section">
+                <h3>En cas de souci</h3>
+                <ul>
+                    <li>« Relevé matériel indisponible » : le service de surveillance est arrêté
+                        (<code>systemctl status monitor-climat</code> sur le NAS).</li>
+                    <li>Aucune notification : vérifiez que ntfy fonctionne sur le NAS et que le
+                        téléphone est abonné au bon topic.</li>
+                    <li>Documentation complète :
+                        <a href="https://github.com/mrklm/PloufNAS#readme" target="_blank"
+                           rel="noopener noreferrer">README du projet</a>.</li>
+                </ul>
             </div>
         </div>
     </div>

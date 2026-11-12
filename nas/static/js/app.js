@@ -24,6 +24,9 @@ let tempColor = '#FF3B3B';
 let humColor  = '#3B8BFF';
 let motDePasse = null;          // gardé en mémoire le temps de la page uniquement
 let seuils = { temp_max: 30, hum_max: 80 };
+let configNAS = null;           // derniers réglages reçus du NAS (pour annuler les modifications)
+let etatNAS = null;             // ces réglages tels que le formulaire les relit (pour comparer)
+let motDePasseDefini = true;    // un mot de passe existe-t-il sur le NAS ?
 
 // ============================================================
 // PRÉFÉRENCES D'AFFICHAGE (propres à ce navigateur)
@@ -158,10 +161,56 @@ function openSettings() {
     afficherMessage('');
     document.getElementById('settingsModal').classList.add('active');
     updateModeUI();
+    majEtatEnregistrement();
 }
 
 function closeSettings() {
+    // Modifications des réglages du NAS non enregistrées : on revient aux valeurs du NAS
+    if (configNAS && reglagesNASModifies()) remplirFormulaire(configNAS);
     document.getElementById('settingsModal').classList.remove('active');
+}
+
+function openHelp() {
+    document.getElementById('helpModal').classList.add('active');
+}
+
+function closeHelp() {
+    document.getElementById('helpModal').classList.remove('active');
+}
+
+// Seuils, alertes ou couleurs différents de ceux enregistrés sur le NAS ?
+function reglagesNASModifies() {
+    // Réglages du NAS non chargés (NAS injoignable) : seul l'affichage peut être modifié
+    if (etatNAS === null) return false;
+    return JSON.stringify(lireReglagesFormulaire()) !== etatNAS;
+}
+
+// Bouton « Appliquer » : bloqué tant qu'un réglage du NAS est modifié sans mot de passe
+function majEtatEnregistrement() {
+    const modifie = reglagesNASModifies();
+    const saisi = document.getElementById('settingsPassword').value !== '';
+    const connu = saisi || !!motDePasse;
+    const bouton = document.getElementById('applySettings');
+    const manquant = modifie && motDePasseDefini && !connu;
+
+    bouton.disabled = modifie && (!motDePasseDefini || !connu);
+    bouton.textContent = modifie ? 'Enregistrer sur le NAS' : 'Appliquer';
+    document.getElementById('passwordRow').classList.toggle('requis', manquant);
+
+    let aide;
+    if (etatNAS === null) {
+        aide = 'Réglages du NAS non chargés (NAS injoignable) : seul l\'affichage peut être modifié.';
+    } else if (!motDePasseDefini) {
+        aide = 'Aucun mot de passe défini sur le NAS : les seuils, les alertes et les couleurs '
+             + 'ne peuvent pas être modifiés. Sur le NAS : sudo python3 config.py --mot-de-passe';
+    } else if (manquant) {
+        aide = 'Mot de passe obligatoire pour enregistrer ces modifications sur le NAS.';
+    } else if (modifie && !saisi) {
+        aide = 'Mot de passe déjà saisi sur cette page.';
+    } else {
+        aide = 'Nécessaire pour modifier les seuils, les alertes et les couleurs (enregistrés sur le NAS).';
+    }
+    document.getElementById('passwordHint').textContent = aide;
 }
 
 async function applySettings() {
@@ -172,21 +221,34 @@ async function applySettings() {
     applyColors();
     enregistrerPrefs();
 
-    // Réglages partagés (seuils, alertes, couleurs) : enregistrés sur le NAS.
-    const champ = document.getElementById('settingsPassword');
-    if (champ.value) motDePasse = champ.value;
-    if (!motDePasse) {
-        afficherMessage('Affichage appliqué. Saisissez le mot de passe pour enregistrer les seuils et les alertes sur le NAS.', 'info');
+    // Réglages du NAS inchangés : rien à enregistrer
+    if (!reglagesNASModifies()) {
+        closeSettings();
         return;
     }
+
+    // Réglages partagés (seuils, alertes, couleurs) : enregistrés sur le NAS, mot de passe obligatoire
+    const champ = document.getElementById('settingsPassword');
+    if (champ.value) motDePasse = champ.value;
+    if (!motDePasse || !motDePasseDefini) {
+        majEtatEnregistrement();
+        champ.focus();
+        return;
+    }
+    const bouton = document.getElementById('applySettings');
+    bouton.disabled = true;
     const resultat = await saveConfig();
     if (resultat.ok) {
         champ.value = '';
         closeSettings();
     } else {
-        if (resultat.code === 401) motDePasse = null;
+        if (resultat.code === 401) {
+            motDePasse = null;
+            champ.value = '';
+        }
         afficherMessage(resultat.message, 'erreur');
     }
+    majEtatEnregistrement();
 }
 
 function updateModeUI() {
@@ -241,7 +303,8 @@ function lireReglagesFormulaire() {
             absent: { enabled: coche('alertAbsent') },
             gpu:   { enabled: coche('alertGpu'),   threshold: entier('alertGpuThreshold') }
         },
-        couleurs: { temperature: tempColor, humidity: humColor }
+        // Le sélecteur de couleur renvoie des minuscules, le NAS des majuscules
+        couleurs: { temperature: tempColor.toUpperCase(), humidity: humColor.toUpperCase() }
     };
 }
 
@@ -275,12 +338,14 @@ function remplirFormulaire(data) {
         document.getElementById('humColor').value = humColor;
         document.getElementById('humColorText').value = humColor.toUpperCase();
     }
-    if (typeof data.mot_de_passe_defini === 'boolean') {
-        document.getElementById('passwordHint').textContent = data.mot_de_passe_defini
-            ? 'Nécessaire pour enregistrer les seuils, les alertes et les couleurs sur le NAS.'
-            : 'Aucun mot de passe défini sur le NAS : lancez « sudo python3 config.py --mot-de-passe ».';
-    }
+    if (typeof data.mot_de_passe_defini === 'boolean') motDePasseDefini = data.mot_de_passe_defini;
     applyColors();
+    // Référence pour savoir si l'utilisateur a modifié les réglages du NAS
+    if (data.seuils && data.alertes_systeme && data.couleurs) {
+        configNAS = data;
+        etatNAS = JSON.stringify(lireReglagesFormulaire());
+    }
+    majEtatEnregistrement();
 }
 
 async function saveConfig() {
@@ -496,6 +561,22 @@ if (window.ResizeObserver && chartContainer) {
 document.getElementById('openSettings').addEventListener('click', openSettings);
 document.getElementById('closeSettings').addEventListener('click', closeSettings);
 document.getElementById('applySettings').addEventListener('click', applySettings);
+document.getElementById('openHelp').addEventListener('click', openHelp);
+document.getElementById('closeHelp').addEventListener('click', closeHelp);
+// Toute modification dans les paramètres met à jour l'état du bouton
+const modaleParametres = document.getElementById('settingsModal');
+modaleParametres.addEventListener('input', majEtatEnregistrement);
+modaleParametres.addEventListener('change', majEtatEnregistrement);
+// Fermeture : touche Échap pour les deux fenêtres, clic à côté pour l'aide seulement
+// (dans les paramètres, un clic malencontreux ferait perdre les modifications)
+document.getElementById('helpModal').addEventListener('click', (e) => {
+    if (e.target.id === 'helpModal') closeHelp();
+});
+document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    if (document.getElementById('helpModal').classList.contains('active')) closeHelp();
+    else if (modaleParametres.classList.contains('active')) closeSettings();
+});
 document.querySelectorAll('img').forEach(img => {
     img.addEventListener('error', () => { img.style.display = 'none'; });
 });

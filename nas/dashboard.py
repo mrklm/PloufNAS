@@ -19,7 +19,7 @@ from flask import Flask, Response, jsonify, request, send_from_directory
 import config
 import systeme
 
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 NB_POINTS = 30          # nombre de mesures renvoyées par /api (30 min à 1 mesure/min)
 
 # Limitation des mots de passe faux, par adresse IP

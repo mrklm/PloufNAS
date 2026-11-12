@@ -12,9 +12,9 @@ et ce projet adhère au [versionnage sémantique](https://semver.org/lang/fr/).
 - Ajout d'un second capteur pour comparaison ?
 - joindre un fichier STL pour mettre l'arduino dans le compartiement cdrom
   avec LCD et bouton en facade + capteurs int/ext ?
-- Mode « accès extérieur » optionnel : authentification ntfy par jeton, consultation du
-  dashboard protégée, écoute derrière un reverse proxy HTTPS, limite des tentatives de
-  mot de passe, services sans root
+- Suite du mode « accès extérieur » (première étape livrée en 0.8.0) : authentification
+  ntfy par jeton (0.9.0), dashboard sans root et guide d'accès distant par VPN ou reverse
+  proxy HTTPS (0.10.0)
 
 ## [0.8.0] - 2026-11-12
 

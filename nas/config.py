@@ -6,6 +6,7 @@ valeurs par défaut au premier lancement (en reprenant un éventuel alertes.json
 Usage en ligne de commande (depuis le dossier monitoring) :
     sudo python3 config.py --init           crée config.json s'il n'existe pas
     sudo python3 config.py --mot-de-passe   définit le mot de passe du dashboard
+    sudo python3 config.py --jeton-ntfy     enregistre le jeton d'accès ntfy (facultatif)
     sudo python3 config.py --verifier       valide config.json et affiche son contenu
 """
 import argparse
@@ -31,6 +32,7 @@ DEFAUTS = {
     "port_serie": "/dev/arduino_nas",
     "fichier_csv": "climat.csv",          # relatif au dossier des scripts, ou absolu
     "ntfy_url": NTFY_NON_CONFIGURE,
+    "ntfy_jeton": "",                     # facultatif : python3 config.py --jeton-ntfy
     "mot_de_passe_hash": "",              # à définir avec : python3 config.py --mot-de-passe
     "dashboard": {
         "adresse": "0.0.0.0",             # 127.0.0.1 derrière un reverse proxy sur le NAS
@@ -67,6 +69,7 @@ PLAGES_SEUILS = {
 }
 PLAGE_ALERTES_SYSTEME = (20, 120)        # °C
 RE_COULEUR = re.compile(r"^#[0-9A-Fa-f]{6}$")
+RE_JETON = re.compile(r"[A-Za-z0-9_-]{1,128}\Z")   # jetons ntfy : tk_ + 29 caractères
 
 
 class ConfigInvalide(ValueError):
@@ -140,13 +143,15 @@ def valider_config(donnees):
     if not isinstance(donnees, dict):
         raise ConfigInvalide("config.json doit contenir un objet JSON.")
     resultat = copy.deepcopy(DEFAUTS)
-    for cle in ("port_serie", "fichier_csv", "ntfy_url", "mot_de_passe_hash"):
+    for cle in ("port_serie", "fichier_csv", "ntfy_url", "ntfy_jeton", "mot_de_passe_hash"):
         if cle in donnees:
             if not isinstance(donnees[cle], str):
                 raise ConfigInvalide(f"« {cle} » doit être une chaîne de caractères.")
             resultat[cle] = donnees[cle]
     if not resultat["port_serie"] or not resultat["fichier_csv"]:
         raise ConfigInvalide("« port_serie » et « fichier_csv » ne peuvent pas être vides.")
+    if resultat["ntfy_jeton"] and not RE_JETON.match(resultat["ntfy_jeton"]):
+        raise ConfigInvalide("« ntfy_jeton » invalide (lettres, chiffres, _ et - uniquement).")
 
     dashboard = donnees.get("dashboard", {})
     if not isinstance(dashboard, dict):
@@ -235,7 +240,7 @@ def chemin_csv(config, dossier=None):
 
 
 def vue_publique(config):
-    """Ce que le navigateur a le droit de voir (ni l'URL ntfy, ni le hash)."""
+    """Ce que le navigateur a le droit de voir (ni l'URL ntfy, ni le jeton, ni le hash)."""
     return {
         "seuils": config["seuils"],
         "alertes_systeme": config["alertes_systeme"],
@@ -287,6 +292,8 @@ def main(argv=None):
     groupe.add_argument("--init", action="store_true", help="crée config.json s'il n'existe pas")
     groupe.add_argument("--mot-de-passe", action="store_true",
                         help="définit le mot de passe d'enregistrement des réglages du dashboard")
+    groupe.add_argument("--jeton-ntfy", action="store_true",
+                        help="enregistre le jeton d'accès ntfy (serveur ntfy avec authentification)")
     groupe.add_argument("--verifier", action="store_true", help="valide et affiche config.json")
     args = parser.parse_args(argv)
 
@@ -319,7 +326,21 @@ def main(argv=None):
         print("Mot de passe enregistré.")
         return 0
 
-    affichage = dict(config, mot_de_passe_hash="(défini)" if config["mot_de_passe_hash"] else "")
+    if args.jeton_ntfy:
+        jeton = saisir_non_vide("Jeton ntfy (commence par tk_) : ").strip()
+        if not RE_JETON.match(jeton):
+            print("Erreur : jeton invalide (lettres, chiffres, _ et - uniquement).", file=sys.stderr)
+            return 1
+        if not jeton.startswith("tk_"):
+            print("Attention : un jeton ntfy commence normalement par « tk_ ».")
+        config["ntfy_jeton"] = jeton
+        enregistrer(config)
+        print("Jeton ntfy enregistré. Il sera utilisé dès la prochaine notification.")
+        return 0
+
+    affichage = dict(config,
+                     mot_de_passe_hash="(défini)" if config["mot_de_passe_hash"] else "",
+                     ntfy_jeton="(défini)" if config["ntfy_jeton"] else "")
     print(json.dumps(affichage, indent=4, ensure_ascii=False))
     print("\nConfiguration valide.")
     return 0

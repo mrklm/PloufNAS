@@ -260,6 +260,51 @@ class TestEnvoyerNtfy(unittest.TestCase):
                                side_effect=mc.requests.ConnectionError("down")):
             self.assertFalse(mc.envoyer_ntfy("t", "m"))
 
+    def entetes_envoyes(self, jeton, statut=200):
+        with mock.patch.object(mc, "NTFY_JETON", jeton), \
+             mock.patch.object(mc.requests, "post", return_value=mock.Mock(
+                 ok=statut < 400, status_code=statut)) as post:
+            resultat = mc.envoyer_ntfy("t", "m")
+        return resultat, post.call_args.kwargs["headers"]
+
+    def test_sans_jeton_pas_d_authentification(self):
+        _, entetes = self.entetes_envoyes("")
+        self.assertNotIn("Authorization", entetes)
+
+    def test_jeton_envoye(self):
+        ok, entetes = self.entetes_envoyes("tk_abc")
+        self.assertTrue(ok)
+        self.assertEqual(entetes["Authorization"], "Bearer tk_abc")
+
+    def test_jeton_refuse(self):
+        for statut in (401, 403):
+            with self.subTest(statut=statut), self.assertLogs("monitor_climat", "WARNING") as logs:
+                ok, _ = self.entetes_envoyes("tk_faux", statut)
+            self.assertFalse(ok)
+            self.assertIn("ntfy_jeton", logs.output[0])
+
+    def test_jeton_exige_par_le_serveur(self):
+        with self.assertLogs("monitor_climat", "WARNING") as logs:
+            ok, _ = self.entetes_envoyes("", 403)
+        self.assertFalse(ok)
+        self.assertIn("--jeton-ntfy", logs.output[0])
+
+    def test_jeton_en_clair(self):
+        self.assertFalse(mc.jeton_en_clair("http://localhost:8080/t", "tk_a"))
+        self.assertFalse(mc.jeton_en_clair("http://127.0.0.1:8080/t", "tk_a"))
+        self.assertFalse(mc.jeton_en_clair("https://ntfy.example.org/t", "tk_a"))
+        self.assertFalse(mc.jeton_en_clair("http://192.168.1.10:8080/t", ""))
+        self.assertTrue(mc.jeton_en_clair("http://192.168.1.10:8080/t", "tk_a"))
+
+    def test_jeton_recharge_avec_la_config(self):
+        cfg = mc.config.valider_config({"ntfy_jeton": "tk_nouveau"})
+        ancien = mc.NTFY_JETON
+        try:
+            mc.appliquer_config(cfg)
+            self.assertEqual(mc.NTFY_JETON, "tk_nouveau")
+        finally:
+            mc.appliquer_config(mc.config.valider_config({"ntfy_jeton": ancien}))
+
 
 if __name__ == "__main__":
     unittest.main()

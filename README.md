@@ -172,6 +172,8 @@ Enregistrez, puis allez dans **Services → Compose → Services** et démarrez 
 > ```
 >
 > Ne réutilisez **jamais** un nom de topic trouvé dans un tuto ou un exemple public.
+>
+> Pour aller plus loin (serveur ntfy accessible depuis Internet), protégez ntfy par un **jeton** : voir [Protéger ntfy par un jeton](#protéger-ntfy-par-un-jeton-facultatif).
 
 #### 4.4 — Test de la chaîne
 
@@ -432,6 +434,7 @@ Dans `config.json` :
 | `seuils.temp_hysteresis` | Écart sous le seuil avant le retour à la normale (température) | `1.0` (°C) |
 | `seuils.hum_hysteresis` | Écart sous le seuil avant le retour à la normale (humidité) | `2.0` (%) |
 | `ntfy_url` | URL ntfy + topic | `http://localhost:8080/VOTRE-TOPIC` |
+| `ntfy_jeton` | Jeton d'accès ntfy, à enregistrer avec `sudo python3 config.py --jeton-ntfy` (facultatif) | vide (pas d'authentification) |
 | `port_serie` | Port série de l'Arduino | `/dev/arduino_nas` |
 | `fichier_csv` | Historique (relatif au dossier `monitoring`, ou chemin absolu) | `climat.csv` |
 
@@ -507,6 +510,7 @@ Les tests du dashboard sont ignorés si Flask n'est pas installé sur la machine
 | **Erreur `latin-1 codec can't encode`** | Un emoji est présent dans un **titre** de notification. Les titres ne doivent contenir que de l'ASCII — les emojis sont OK dans le **corps** du message. |
 | Notification ntfy non reçue | Vérifiez que le conteneur tourne : `docker ps \| grep ntfy` |
 | ntfy inaccessible | Testez `curl http://localhost:8080/v1/health` sur le NAS |
+| `ntfy a refusé la notification (HTTP 401)` ou `(HTTP 403)` | Le serveur ntfy exige un jeton, ou refuse celui de `config.json` : voir [Protéger ntfy par un jeton](#protéger-ntfy-par-un-jeton-facultatif) |
 | Alerte humidité non déclenchée | Le script lit le buffer série en entier (corrigé). Si le problème persiste, vérifiez le code Arduino. |
 
 ---
@@ -514,7 +518,7 @@ Les tests du dashboard sont ignorés si Flask n'est pas installé sur la machine
 ## 🔐 Sécurité
 
 - ❌ Ne **jamais** exposer Flask ou ntfy directement sur Internet
-- ✅ L'enregistrement des réglages depuis le dashboard est protégé par **mot de passe** (empreinte PBKDF2 dans `config.json`). Par défaut, la consultation reste ouverte au réseau local. Pour ntfy, activez son authentification si besoin.
+- ✅ L'enregistrement des réglages depuis le dashboard est protégé par **mot de passe** (empreinte PBKDF2 dans `config.json`). Par défaut, la consultation reste ouverte au réseau local. Pour ntfy, activez son authentification si besoin ([jeton](#protéger-ntfy-par-un-jeton-facultatif)).
 - ✅ Après **5 mots de passe incorrects en 15 minutes**, l'adresse IP concernée est bloquée jusqu'à la fin de ce délai.
 - ✅ La page applique une politique de sécurité stricte (CSP : aucun script extérieur ni en ligne, pas d'affichage dans un cadre) et les réglages ne peuvent pas être envoyés depuis un autre site.
 - ✅ Restreindre l'accès au **LAN** via pare-feu
@@ -536,6 +540,57 @@ Elles se règlent uniquement dans le fichier (jamais depuis le navigateur), puis
 > ⚠️ Le mot de passe circule en clair en HTTP. Si le dashboard est accessible hors de votre réseau, il doit l'être **uniquement en HTTPS** (reverse proxy) ou **via un VPN**, avec `consultation_protegee` à `true`. Ne mettez `derriere_proxy` à `true` que si un proxy est réellement devant le dashboard : sinon un visiteur pourrait se faire passer pour une autre adresse et contourner le blocage.
 
 Le dashboard utilise le serveur de production **waitress** s'il est installé (`sudo apt install python3-waitress`), sinon le serveur intégré de Flask, réservé à un usage en réseau local.
+
+### Protéger ntfy par un jeton (facultatif)
+
+Sans authentification, quiconque connaît le nom du topic peut lire vos alertes ou en envoyer de fausses. En réseau local, un topic long et aléatoire suffit. Si votre serveur ntfy est **accessible depuis Internet**, activez son authentification : PloufNAS envoie alors ses notifications avec un **jeton**, et le téléphone se connecte avec son propre compte.
+
+**1. Activer l'authentification de ntfy.** Dans le fichier Compose de ntfy (**Services → Compose → Fichiers**), ajoutez deux variables et un volume pour la base des utilisateurs :
+
+```yaml
+    environment:
+      - TZ=Europe/Paris
+      - NTFY_AUTH_FILE=/var/lib/ntfy/user.db
+      - NTFY_AUTH_DEFAULT_ACCESS=deny-all
+    volumes:
+      - CHANGE_TO_COMPOSE_DATA_PATH/ntfy/cache:/var/cache/ntfy
+      - CHANGE_TO_COMPOSE_DATA_PATH/ntfy/config:/etc/ntfy
+      - CHANGE_TO_COMPOSE_DATA_PATH/ntfy/lib:/var/lib/ntfy
+```
+
+Enregistrez et redémarrez le service `ntfy`. À partir de là, plus personne ne peut lire ni écrire sans compte : les notifications sont suspendues jusqu'à l'étape 3.
+
+**2. Créer les comptes et le jeton** (en SSH sur le NAS, remplacez `VOTRE-TOPIC`) :
+
+```bash
+# Compte utilisé par PloufNAS : il peut seulement publier
+sudo docker exec -it ntfy ntfy user add ploufnas
+sudo docker exec ntfy ntfy access ploufnas VOTRE-TOPIC write-only
+sudo docker exec ntfy ntfy token add ploufnas        # affiche un jeton tk_…
+
+# Compte du téléphone : il peut seulement lire
+sudo docker exec -it ntfy ntfy user add telephone
+sudo docker exec ntfy ntfy access telephone VOTRE-TOPIC read-only
+```
+
+`ntfy user add` demande un mot de passe pour le compte (deux fois).
+
+**3. Enregistrer le jeton dans PloufNAS**, puis vérifier :
+
+```bash
+cd /srv/dev-disk-by-uuid-$UUID/monitoring   # UUID : voir l'étape 5
+sudo python3 config.py --jeton-ntfy      # collez le jeton tk_… affiché à l'étape 2
+sudo systemctl restart monitor-climat    # envoie la notification de démarrage
+journalctl -u monitor-climat -n 5 --no-pager
+```
+
+Le jeton est pris en compte sans redémarrage ; le redémarrage sert seulement à envoyer une notification de test. Il est conservé dans `config.json` (lisible par `root` uniquement) et n'est jamais transmis au navigateur.
+
+**4. Connecter le téléphone.** Dans l'application ntfy : **Paramètres → Gérer les utilisateurs → Ajouter**, indiquez l'adresse du serveur et le compte `telephone`. La notification de démarrage doit apparaître.
+
+> ⚠️ Hors du réseau local, `ntfy_url` doit commencer par `https://` : en HTTP, le jeton circule en clair. PloufNAS le signale au démarrage dans `journalctl`.
+>
+> Pour revenir sans authentification : retirez les deux variables `NTFY_AUTH_*` du fichier Compose et mettez `"ntfy_jeton": ""` dans `config.json`.
 
 ---
 

@@ -1,4 +1,5 @@
 """Tests de la configuration partagée (nas/config.py)."""
+import io
 import json
 import os
 import sys
@@ -71,10 +72,25 @@ class TestValidation(unittest.TestCase):
                 with self.assertRaises(config.ConfigInvalide):
                     config.valider_config({"dashboard": invalide})
 
+    def test_jeton_ntfy(self):
+        self.assertEqual(config.valider_config({"ntfy_jeton": "tk_AbC-12_x"})["ntfy_jeton"],
+                         "tk_AbC-12_x")
+        for invalide in ("tk_a b", "tk_abc\n", "tk_a\nX-Autre: 1", 12, "x" * 129):
+            with self.subTest(invalide=invalide):
+                with self.assertRaises(config.ConfigInvalide):
+                    config.valider_config({"ntfy_jeton": invalide})
+
+    def test_le_dashboard_conserve_le_jeton(self):
+        cfg = config.valider_reglages_dashboard(
+            {"ntfy_jeton": "tk_pirate", "seuils": {"temp_max": 31}},
+            dict(config.DEFAUTS, ntfy_jeton="tk_vrai"))
+        self.assertEqual(cfg["ntfy_jeton"], "tk_vrai")
+
     def test_vue_publique_sans_secret(self):
         vue = config.vue_publique(dict(config.DEFAUTS, mot_de_passe_hash="h",
-                                       ntfy_url="http://x/secret"))
+                                       ntfy_url="http://x/secret", ntfy_jeton="tk_secret"))
         self.assertNotIn("ntfy_url", vue)
+        self.assertNotIn("tk_secret", json.dumps(vue))
         self.assertNotIn("mot_de_passe_hash", vue)
         self.assertTrue(vue["mot_de_passe_defini"])
 
@@ -153,6 +169,42 @@ class TestCommandeMotDePasse(unittest.TestCase):
 
     def test_trop_court(self):
         self.assertEqual(self.lancer(["court"]), 1)
+
+
+class TestCommandeJetonNtfy(unittest.TestCase):
+    def setUp(self):
+        self.dossier = tempfile.TemporaryDirectory()
+        self.patch = mock.patch.object(config, "CHEMIN_CONFIG",
+                                       os.path.join(self.dossier.name, "config.json"))
+        self.patch.start()
+
+    def tearDown(self):
+        self.patch.stop()
+        self.dossier.cleanup()
+
+    def lancer(self, argv, saisies=()):
+        sortie = io.StringIO()
+        with mock.patch.object(config.getpass, "getpass", side_effect=list(saisies)), \
+             mock.patch("sys.stdout", sortie), mock.patch("sys.stderr"):
+            code = config.main(argv)
+        return code, sortie.getvalue()
+
+    def test_enregistrement(self):
+        code, _ = self.lancer(["--jeton-ntfy"], ["", " tk_0123456789abcdef "])
+        self.assertEqual(code, 0)
+        self.assertEqual(config.charger()["ntfy_jeton"], "tk_0123456789abcdef")
+
+    def test_jeton_invalide(self):
+        code, _ = self.lancer(["--jeton-ntfy"], ["tk_avec espace"])
+        self.assertEqual(code, 1)
+        self.assertEqual(config.charger()["ntfy_jeton"], "")
+
+    def test_verifier_masque_le_jeton(self):
+        self.lancer(["--jeton-ntfy"], ["tk_secret"])
+        code, sortie = self.lancer(["--verifier"])
+        self.assertEqual(code, 0)
+        self.assertNotIn("tk_secret", sortie)
+        self.assertIn('"ntfy_jeton": "(défini)"', sortie)
 
 
 class TestMotDePasse(unittest.TestCase):

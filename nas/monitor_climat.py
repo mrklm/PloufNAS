@@ -3,6 +3,7 @@ import os
 import sys
 import time
 from datetime import datetime
+from urllib.parse import urlsplit
 
 import requests
 import serial
@@ -19,6 +20,7 @@ import systeme
 port_serie      = config.DEFAUTS["port_serie"]
 fichier_log     = config.chemin_csv(config.DEFAUTS)
 NTFY_URL        = config.DEFAUTS["ntfy_url"]
+NTFY_JETON      = config.DEFAUTS["ntfy_jeton"]                  # vide : pas d'authentification
 TEMP_MAX        = config.DEFAUTS["seuils"]["temp_max"]          # °C
 HUM_MAX         = config.DEFAUTS["seuils"]["hum_max"]           # %
 # Hystérésis : retour à la normale seulement sous (seuil - hystérésis).
@@ -55,11 +57,12 @@ log = logging.getLogger("monitor_climat")
 # ============================================================
 def appliquer_config(cfg):
     """Reporte une config validée dans les variables utilisées par le script."""
-    global port_serie, fichier_log, NTFY_URL
+    global port_serie, fichier_log, NTFY_URL, NTFY_JETON
     global TEMP_MAX, HUM_MAX, TEMP_HYSTERESIS, HUM_HYSTERESIS, ALERTES_SYSTEME
     port_serie = cfg["port_serie"]
     fichier_log = config.chemin_csv(cfg)
     NTFY_URL = cfg["ntfy_url"]
+    NTFY_JETON = cfg["ntfy_jeton"]
     seuils = cfg["seuils"]
     TEMP_MAX = seuils["temp_max"]
     HUM_MAX = seuils["hum_max"]
@@ -111,6 +114,14 @@ ConfigInvalide = config.ConfigInvalide
 # ============================================================
 # NOTIFICATIONS
 # ============================================================
+def jeton_en_clair(url, jeton):
+    """True si le jeton partirait en HTTP non chiffré vers une autre machine que le NAS."""
+    if not jeton:
+        return False
+    adresse = urlsplit(url)
+    return adresse.scheme == "http" and adresse.hostname not in ("localhost", "127.0.0.1", "::1")
+
+
 def envoyer_ntfy(titre, message, priorite="default", tags="warning"):
     """Envoie une notification via ntfy. Retourne True si elle a été acceptée.
 
@@ -118,19 +129,20 @@ def envoyer_ntfy(titre, message, priorite="default", tags="warning"):
     car requests encode les headers en latin-1 par défaut.
     Les emojis sont OK dans le corps du message (encodé en UTF-8).
     """
+    entetes = {"Title": titre, "Priority": priorite, "Tags": tags}
+    if NTFY_JETON:
+        entetes["Authorization"] = f"Bearer {NTFY_JETON}"
     try:
-        reponse = requests.post(
-            NTFY_URL,
-            data=message.encode('utf-8'),
-            headers={
-                "Title": titre,
-                "Priority": priorite,
-                "Tags": tags
-            },
-            timeout=5
-        )
+        reponse = requests.post(NTFY_URL, data=message.encode('utf-8'),
+                                headers=entetes, timeout=5)
     except requests.RequestException as e:
         log.warning("Erreur envoi ntfy : %s", e)
+        return False
+    if reponse.status_code in (401, 403):
+        log.warning("ntfy a refusé la notification (HTTP %s) : %s", reponse.status_code,
+                    "vérifiez « ntfy_jeton » et les droits de son utilisateur sur le topic"
+                    if NTFY_JETON else
+                    "ce serveur exige un jeton (python3 config.py --jeton-ntfy)")
         return False
     if not reponse.ok:
         log.warning("ntfy a refusé la notification (HTTP %s)", reponse.status_code)
@@ -490,6 +502,9 @@ def main():
     if NTFY_URL == config.NTFY_NON_CONFIGURE:
         log.warning("ntfy_url n'est pas configurée dans %s : aucune notification ne "
                     "sera reçue.", suivi.chemin)
+    if jeton_en_clair(NTFY_URL, NTFY_JETON):
+        log.warning("Le jeton ntfy est envoyé en HTTP non chiffré vers %s : utilisez une "
+                    "adresse https://.", urlsplit(NTFY_URL).hostname)
 
     surveillance = Surveillance()
     chemin_systeme = os.path.join(os.path.dirname(suivi.chemin), "systeme.json")

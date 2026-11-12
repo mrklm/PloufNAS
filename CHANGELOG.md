@@ -12,9 +12,21 @@ et ce projet adhère au [versionnage sémantique](https://semver.org/lang/fr/).
 - Ajout d'un second capteur pour comparaison ?
 - joindre un fichier STL pour mettre l'arduino dans le compartiement cdrom
   avec LCD et bouton en facade + capteurs int/ext ?
-- Suite du mode « accès extérieur » (première étape livrée en 0.8.0) : authentification
-  ntfy par jeton (1.1.0), dashboard sans root et guide d'accès distant par VPN ou reverse
-  proxy HTTPS (1.2.0)
+- Suite du mode « accès extérieur » : dashboard sans root et guide d'accès distant par VPN
+  ou reverse proxy HTTPS (1.2.0)
+
+## [1.1.0] - 2026-11-12
+
+### Ajouté
+- Authentification ntfy par jeton, facultative : `sudo python3 config.py --jeton-ntfy`
+  (clé `ntfy_jeton` de `config.json`, prise en compte sans redémarrage)
+- Message clair dans `journalctl` quand ntfy refuse la notification (HTTP 401/403)
+- Avertissement au démarrage si le jeton part en HTTP non chiffré vers une autre machine
+- README : guide « Protéger ntfy par un jeton » (comptes ntfy, jeton, téléphone)
+
+### Sécurité
+- Le jeton n'est jamais transmis au navigateur, ni modifiable depuis le dashboard ;
+  `config.py --verifier` le masque
 
 ## [1.0.0] - 2026-11-12
 
@@ -225,7 +237,8 @@ de démonstration pour le CPU et les disques.
 - Services systemd pour le démarrage automatique
 - Documentation initiale (README)
 
-[Non publié]: https://github.com/mrklm/PloufNAS/compare/v1.0.0...HEAD
+[Non publié]: https://github.com/mrklm/PloufNAS/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/mrklm/PloufNAS/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/mrklm/PloufNAS/compare/v0.8.0...v1.0.0
 [0.8.0]: https://github.com/mrklm/PloufNAS/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/mrklm/PloufNAS/compare/v0.6.0...v0.7.0

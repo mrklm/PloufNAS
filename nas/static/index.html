@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PloufNAS</title>
+    <link rel="stylesheet" href="static/css/style.css">
+</head>
+<body>
+    <!-- Header -->
+    <div class="header">
+        <h1>
+            <span class="title">PloufNAS</span>
+            <span class="version" id="version"></span>
+        </h1>
+        <button onclick="openSettings()">⚙️ Paramètres</button>
+    </div>
+
+    <!-- Bloc ambiance -->
+    <div class="ambiance">
+        <div class="nas-icon">
+            <img src="static/img/NAS.png" alt="NAS" onerror="this.style.display='none'">
+        </div>
+        <div class="values">
+            <div class="value" id="temp">-- °C</div>
+            <div class="value" id="hum">-- %</div>
+        </div>
+        <div class="chart">
+            <canvas id="myChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Rangée du bas : disques + CPU/GPU -->
+    <div class="bottom-row" id="bottomRow">
+        <div class="disks" id="disksBlock"></div>
+        <div class="system" id="systemBlock">
+            <div class="block" id="cpuBlock">
+                <img src="static/img/CPU.png" alt="CPU" onerror="this.style.display='none'">
+                <div class="name">CPU</div>
+                <div class="temp" id="cpuTemp">-- °C</div>
+            </div>
+            <div class="block" id="gpuBlock">
+                <img src="static/img/GPU.png" alt="GPU" onerror="this.style.display='none'">
+                <div class="name">GPU</div>
+                <div class="temp" id="gpuTemp">-- °C</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modale Paramètres -->
+    <div class="modal-overlay" id="settingsModal">
+        <div class="modal">
+            <h2>
+                ⚙️ Paramètres
+                <button onclick="closeSettings()">×</button>
+            </h2>
+
+            <!-- 1. Mode d'affichage -->
+            <div class="section">
+                <h3>Mode d'affichage</h3>
+                <label>Mode :
+                    <select id="modeSelector">
+                        <option value="basic">Basique</option>
+                        <option value="full">Complet</option>
+                    </select>
+                </label>
+            </div>
+
+            <!-- 2. Composants -->
+            <div class="section" id="fullModeOptions">
+                <h3>Composants à afficher (mode complet)</h3>
+                <div class="checkbox">
+                    <input type="checkbox" id="showDisks" checked>
+                    <label for="showDisks">Afficher les disques durs</label>
+                </div>
+                <div class="checkbox">
+                    <input type="checkbox" id="showCpu" checked>
+                    <label for="showCpu">Afficher le CPU</label>
+                </div>
+                <div class="checkbox disabled" id="showGpuContainer">
+                    <input type="checkbox" id="showGpu" disabled>
+                    <label for="showGpu">Afficher le GPU (non détecté)</label>
+                </div>
+            </div>
+
+            <!-- 3. Couleurs -->
+            <div class="section">
+                <h3>Couleurs du graphique</h3>
+                <div class="color-row">
+                    <label for="tempColor">Température :</label>
+                    <input type="color" id="tempColor" value="#FF3B3B">
+                    <input type="text" id="tempColorText" value="#FF3B3B" maxlength="7">
+                </div>
+                <div class="color-row">
+                    <label for="humColor">Humidité :</label>
+                    <input type="color" id="humColor" value="#3B8BFF">
+                    <input type="text" id="humColorText" value="#3B8BFF" maxlength="7">
+                </div>
+            </div>
+
+            <!-- 4. Alertes climat (lues par monitor_climat.py, appliquées sans redémarrage) -->
+            <div class="section">
+                <h3>Alertes climat</h3>
+                <div class="number-row">
+                    <label for="seuilTemp">Température max :</label>
+                    <input type="number" id="seuilTemp" min="0" max="80" step="0.5" value="30"> °C
+                </div>
+                <div class="number-row">
+                    <label for="seuilHum">Humidité max :</label>
+                    <input type="number" id="seuilHum" min="1" max="100" step="1" value="80"> %
+                </div>
+            </div>
+
+            <!-- 5. Alertes système (pas encore prises en compte par la surveillance) -->
+            <div class="section">
+                <h3>Alertes système (bientôt disponibles)</h3>
+                <div class="checkbox">
+                    <input type="checkbox" id="alertCpu" checked>
+                    <label for="alertCpu">Alerte température CPU</label>
+                </div>
+                <div class="threshold">
+                    <label>Seuil :</label>
+                    <select id="alertCpuThreshold">
+                        <option value="60">60 °C</option>
+                        <option value="65">65 °C</option>
+                        <option value="70">70 °C</option>
+                        <option value="75" selected>75 °C</option>
+                        <option value="80">80 °C</option>
+                        <option value="85">85 °C</option>
+                    </select>
+                </div>
+
+                <div class="checkbox">
+                    <input type="checkbox" id="alertDisks" checked>
+                    <label for="alertDisks">Alerte température disques</label>
+                </div>
+                <div class="threshold">
+                    <label>Seuil :</label>
+                    <select id="alertDisksThreshold">
+                        <option value="40">40 °C</option>
+                        <option value="45">45 °C</option>
+                        <option value="50" selected>50 °C</option>
+                        <option value="55">55 °C</option>
+                        <option value="60">60 °C</option>
+                    </select>
+                </div>
+
+                <div class="checkbox">
+                    <input type="checkbox" id="alertSmart" checked>
+                    <label for="alertSmart">Alerte état SMART dégradé</label>
+                </div>
+
+                <div class="checkbox disabled" id="alertGpuContainer">
+                    <input type="checkbox" id="alertGpu" disabled>
+                    <label for="alertGpu">Alerte température GPU (non détecté)</label>
+                </div>
+                <div class="threshold">
+                    <label>Seuil :</label>
+                    <select id="alertGpuThreshold">
+                        <option value="70">70 °C</option>
+                        <option value="75">75 °C</option>
+                        <option value="80" selected>80 °C</option>
+                        <option value="85">85 °C</option>
+                        <option value="90">90 °C</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- 6. Thème (en bas) -->
+            <div class="section">
+                <h3>Thème</h3>
+                <label>Thème :
+                    <select id="themeSelector"></select>
+                </label>
+                <div class="checkbox">
+                    <input type="checkbox" id="keepTheme">
+                    <label for="keepTheme">Garder le thème au rechargement</label>
+                </div>
+            </div>
+
+            <!-- 7. Mot de passe -->
+            <div class="section">
+                <h3>Enregistrement sur le NAS</h3>
+                <div class="number-row">
+                    <label for="settingsPassword">Mot de passe :</label>
+                    <input type="password" id="settingsPassword" autocomplete="current-password">
+                </div>
+                <div class="hint" id="passwordHint"></div>
+            </div>
+
+            <div class="message" id="settingsMessage" role="status"></div>
+            <div class="actions">
+                <button onclick="applySettings()">Appliquer</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="static/vendor/chart.umd.min.js"></script>
+    <script src="static/js/app.js"></script>
+</body>
+</html>

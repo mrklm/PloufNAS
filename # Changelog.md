@@ -13,6 +13,37 @@ et ce projet adhère au [versionnage sémantique](https://semver.org/lang/fr/).
 - joindre un fichier STL pour mettre l'arduino dans le compartiement cdrom
   avec LCD et bouton en facade + capteurs int/ext ?
 
+## [0.5.0] - 2026-11-12
+
+### Ajouté
+- **Configuration unique `config.json`**, partagée par la surveillance et le dashboard
+  (`nas/config.py`), créée au premier lancement avec reprise de l'ancien `alertes.json`
+- Commandes `config.py --init`, `--mot-de-passe` et `--verifier`
+- **Mot de passe** pour enregistrer les réglages depuis le dashboard (empreinte PBKDF2,
+  valeurs validées côté serveur, topic ntfy jamais envoyé au navigateur)
+- Seuils de température et d'humidité réglables depuis le dashboard, **appliqués sans
+  redémarrage** (`monitor_climat.py` relit `config.json` quand il change)
+- Procédure « Mise à jour depuis une version précédente » dans le README
+- Tests de la configuration et du dashboard
+
+### Modifié
+- Dashboard livré en fichiers (`nas/dashboard.py`, `nas/static/`) au lieu d'être généré
+  par `setup_dashboard.py`
+- **Chart.js 4.4.1 servi en local** : le graphique fonctionne sans Internet et ne change
+  plus de version tout seul
+- Icônes du dashboard déplacées de `assets/` vers `nas/static/img/`
+- L'API ne lit plus que la fin du CSV (au lieu du fichier entier toutes les 5 s)
+- Chemin du CSV relatif au dossier des scripts : plus d'UUID à recopier dans `monitor_climat.py`
+
+### Corrigé
+- La case « Garder le thème au rechargement » n'avait aucun effet ; le mode d'affichage
+  et les composants choisis sont désormais aussi conservés (par navigateur)
+- Le graphique coupait l'humidité au-dessus de 80 % (justement en cas d'alerte)
+- Textes et graduations du graphique illisibles selon le thème (couleur non appliquée)
+
+### Supprimé
+- `nas/setup_dashboard.py` et `nas/alertes.json` (remplacés par `config.json`)
+
 ## [0.4.0] - 2026-11-12
 
 Version expérimentale : le mode avancé du dashboard affiche encore des données
@@ -108,7 +139,8 @@ de démonstration pour le CPU et les disques.
 - Services systemd pour le démarrage automatique
 - Documentation initiale (README)
 
-[Non publié]: https://github.com/mrklm/PloufNAS/compare/v0.4.0...HEAD
+[Non publié]: https://github.com/mrklm/PloufNAS/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/mrklm/PloufNAS/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/mrklm/PloufNAS/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/mrklm/PloufNAS/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/mrklm/PloufNAS/compare/v0.1.0...v0.2.0

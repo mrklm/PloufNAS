@@ -35,7 +35,8 @@ C'est pourquoi je vous propose un système complet et robuste de surveillance de
 
 - **Acquisition fiable** : Lecture du capteur SHT31 (Température + Humidité) via Arduino.
 - **Stockage robuste** : Enregistrement continu des données dans un fichier CSV sur le volume de stockage.
-- **Dashboard Web** : Interface légère en Flask + Chart.js, accessible sur tout le réseau local.
+- **Dashboard Web** : Interface légère en Flask + Chart.js (servi en local, fonctionne sans Internet), accessible sur tout le réseau local.
+- **Réglages depuis le navigateur** : seuils d'alerte modifiables dans le dashboard (protégés par mot de passe), appliqués sans redémarrage.
 - **Thèmes personnalisés** : 16 thèmes intégrés (Sombres, Clairs, et "Pouêt-Pouêt") avec sélection aléatoire au chargement.
 - **Alertes push** : Notifications en temps réel via **ntfy** (auto-hébergé) si les seuils de température ou d'humidité sont dépassés.
 - **Alerte "pas de données"** : Notification si aucune donnée n'est reçue depuis plus de 15 minutes (détection d'un capteur débranché ou d'un service planté).
@@ -205,48 +206,54 @@ ls -d /srv/dev-disk-by-uuid-$UUID   # doit afficher le dossier, sinon l'UUID est
 
 > 💡 La variable est perdue si vous fermez la session SSH : redéfinissez-la avant de reprendre aux étapes 5 ou 8.
 
-**2. Copiez les scripts et les images au bon endroit :**
+**2. Copiez les scripts et l'interface web au bon endroit :**
 
 ```bash
 MON=/srv/dev-disk-by-uuid-$UUID/monitoring
+sudo mkdir -p $MON
 
-# Créer le dossier monitoring (et le sous-dossier des images) sur le volume
-sudo mkdir -p $MON/assets
-
-# Copier les scripts depuis le repo cloné
-sudo cp ~/PloufNAS/nas/monitor_climat.py \
-        ~/PloufNAS/nas/setup_dashboard.py \
-        $MON/
-
-# Copier les images du dashboard (sinon elles n'apparaissent pas)
-sudo cp ~/PloufNAS/assets/NAS.png ~/PloufNAS/assets/CPU.png \
-        ~/PloufNAS/assets/GPU.png ~/PloufNAS/assets/DD.png \
-        $MON/assets/
-
-# Renseigner automatiquement le chemin du CSV dans monitor_climat.py
-sudo sed -i "s/VOTRE_UUID/$UUID/" $MON/monitor_climat.py
-
-# Générer dashboard.py
-cd $MON
-sudo python3 setup_dashboard.py
+# Scripts + dossier static/ (page web, styles, icônes, Chart.js)
+sudo cp -r ~/PloufNAS/nas/monitor_climat.py \
+           ~/PloufNAS/nas/config.py \
+           ~/PloufNAS/nas/dashboard.py \
+           ~/PloufNAS/nas/static \
+           $MON/
 
 # Vérifier
-ls -la $MON $MON/assets
+ls -la $MON $MON/static
 ```
 
-**3. Personnalisez `monitor_climat.py` :**
+**3. Créez et personnalisez la configuration :**
 
-Éditez le fichier (`sudo nano $MON/monitor_climat.py`) et vérifiez la section **CONFIGURATION** en haut. Le chemin du CSV a déjà été renseigné ; il reste au minimum à remplacer `VOTRE-TOPIC` :
+Tous les réglages sont dans un seul fichier, `config.json`, partagé par la surveillance et le dashboard. Les chemins sont relatifs au dossier `monitoring` : vous n'avez pas à y recopier l'UUID.
 
-```python
-port_serie  = '/dev/arduino_nas'
-fichier_log = '/srv/dev-disk-by-uuid-VOTRE_UUID/monitoring/climat.csv'
-
-TEMP_MAX = 30.0    # °C
-HUM_MAX  = 80.0    # %
-
-NTFY_URL = "http://localhost:8080/VOTRE-TOPIC"
+```bash
+cd $MON
+sudo python3 config.py --init         # crée config.json avec les valeurs par défaut
+sudo nano config.json                 # remplacez VOTRE-TOPIC dans "ntfy_url"
+sudo python3 config.py --mot-de-passe # mot de passe pour enregistrer les réglages depuis le dashboard
+sudo python3 config.py --verifier     # contrôle le fichier et affiche son contenu
 ```
+
+Extrait de `config.json` :
+
+```json
+{
+    "port_serie": "/dev/arduino_nas",
+    "fichier_csv": "climat.csv",
+    "ntfy_url": "http://localhost:8080/VOTRE-TOPIC",
+    "mot_de_passe_hash": "pbkdf2_sha256$...",
+    "seuils": {
+        "temp_max": 30.0,
+        "hum_max": 80.0,
+        "temp_hysteresis": 1.0,
+        "hum_hysteresis": 2.0
+    },
+    ...
+}
+```
+
+> 🔒 `config.json` contient votre topic ntfy et l'empreinte du mot de passe : il est lisible par `root` uniquement et exclu du dépôt Git. Le mot de passe lui-même n'est jamais enregistré.
 
 ---
 
@@ -270,7 +277,7 @@ sudo apt install -y python3 python3-serial python3-flask python3-requests curl
 **Testez toujours à la main avant d'activer les services** — sinon vous déboguez à l'aveugle.
 
 ```bash
-cd /srv/dev-disk-by-uuid-VOTRE_UUID/monitoring/
+cd /srv/dev-disk-by-uuid-$UUID/monitoring/
 
 # Terminal 1 : collecteur (lecture série → CSV + alertes ntfy)
 sudo python3 monitor_climat.py
@@ -349,20 +356,92 @@ Checklist après installation :
 
 ---
 
+### Mise à jour depuis une version précédente (≤ 0.4.0)
+
+Jusqu'à la version 0.4.0, le dashboard était généré par `setup_dashboard.py` et les réglages étaient écrits dans `monitor_climat.py`. Depuis la 0.5.0, ils sont dans `config.json`. En SSH sur le NAS :
+
+```bash
+UUID=collez-ici-votre-uuid
+MON=/srv/dev-disk-by-uuid-$UUID/monitoring
+ls -d $MON                                    # doit afficher le dossier
+
+# 1. Récupérer la nouvelle version du dépôt
+cd ~/PloufNAS && git pull
+
+# 2. Noter votre topic ntfy actuel (il sera à reporter dans config.json)
+grep NTFY_URL $MON/monitor_climat.py
+
+# 3. Arrêter les services et sauvegarder le dossier (dont l'historique climat.csv)
+sudo systemctl stop monitor-climat dashboard-climat
+sudo cp -a $MON $MON.sauvegarde-$(date +%F)
+
+# 4. Dépendances (sans effet si elles sont déjà installées)
+sudo apt update
+sudo apt install -y python3-serial python3-flask python3-requests
+
+# 5. Supprimer les fichiers des anciennes versions
+#    (alertes.json est conservé : ses réglages sont repris dans config.json)
+sudo rm -f $MON/setup_dashboard.py $MON/index.html
+sudo rm -rf $MON/assets $MON/__pycache__
+
+# 6. Copier la nouvelle version, puis créer la configuration
+sudo cp -r ~/PloufNAS/nas/monitor_climat.py ~/PloufNAS/nas/config.py \
+           ~/PloufNAS/nas/dashboard.py ~/PloufNAS/nas/static $MON/
+cd $MON
+sudo python3 config.py --init
+sudo nano config.json                 # reportez le topic noté à l'étape 2 dans "ntfy_url"
+sudo python3 config.py --mot-de-passe
+sudo python3 config.py --verifier
+
+# 7. Règle udev (l'ancien fichier pouvait s'appeler 99-arduino-nas.rules.rb)
+ls /etc/udev/rules.d/ | grep -i arduino
+sudo rm -f /etc/udev/rules.d/99-arduino-nas.rules.rb
+sudo cp ~/PloufNAS/nas/99-arduino-nas.rules /etc/udev/rules.d/
+sudo udevadm control --reload-rules && sudo udevadm trigger
+ls -l /dev/arduino_nas
+
+# 8. Services systemd
+sudo cp ~/PloufNAS/nas/monitor-climat.service ~/PloufNAS/nas/dashboard-climat.service /etc/systemd/system/
+sudo sed -i "s/VOTRE_UUID/$UUID/g" /etc/systemd/system/monitor-climat.service \
+                                    /etc/systemd/system/dashboard-climat.service
+grep VOTRE_UUID /etc/systemd/system/*-climat.service   # ne doit rien afficher
+sudo systemctl daemon-reload
+sudo systemctl enable --now monitor-climat dashboard-climat
+
+# 9. Vérifier
+systemctl status monitor-climat dashboard-climat --no-pager
+journalctl -u monitor-climat -n 20 --no-pager
+```
+
+Une fois que tout fonctionne, vous pouvez supprimer `$MON/alertes.json` et, après quelques jours, la sauvegarde `$MON.sauvegarde-*`.
+
+> 💡 Le nouveau sketch Arduino (`arduino/sht31_nas_monitor.ino`) signale les erreurs de lecture du capteur. Il est conseillé de le téléverser, mais la surveillance fonctionne aussi avec l'ancien.
+
+---
+
 ## 🔔 Personnalisation des alertes
 
-Tous les paramètres sont regroupés en haut de `monitor_climat.py` :
+Les seuils se règlent dans le panneau **⚙️ Paramètres** du dashboard (section « Alertes climat », mot de passe requis) ou dans `config.json`. Ils sont pris en compte **sans redémarrer** le service : `monitor_climat.py` relit `config.json` dès qu'il change. Une configuration invalide est ignorée (l'ancienne reste active) et signalée dans `journalctl`.
+
+Dans `config.json` :
 
 | Paramètre | Description | Valeur par défaut |
 |---|---|---|
-| `TEMP_MAX` | Seuil de température (°C) | `30.0` |
-| `HUM_MAX` | Seuil d'humidité (%) | `80.0` |
-| `NTFY_URL` | URL ntfy + topic | `http://localhost:8080/VOTRE-TOPIC` |
+| `seuils.temp_max` | Seuil de température (°C) | `30.0` |
+| `seuils.hum_max` | Seuil d'humidité (%) | `80.0` |
+| `seuils.temp_hysteresis` | Écart sous le seuil avant le retour à la normale (température) | `1.0` (°C) |
+| `seuils.hum_hysteresis` | Écart sous le seuil avant le retour à la normale (humidité) | `2.0` (%) |
+| `ntfy_url` | URL ntfy + topic | `http://localhost:8080/VOTRE-TOPIC` |
+| `port_serie` | Port série de l'Arduino | `/dev/arduino_nas` |
+| `fichier_csv` | Historique (relatif au dossier `monitoring`, ou chemin absolu) | `climat.csv` |
+
+Réglages avancés, en haut de `monitor_climat.py` (redémarrage du service nécessaire) :
+
+| Paramètre | Description | Valeur par défaut |
+|---|---|---|
 | `DELAI_SANS_DONNEES` | Délai avant alerte "pas de données" | `15 * 60` (15 min) |
 | `INTERVALLE_LECTURE` | Fréquence de lecture du port série | `5` (secondes) |
 | `INTERVALLE_ECRITURE` | Fréquence d'écriture dans le CSV | `60` (secondes) |
-| `TEMP_HYSTERESIS` | Écart sous le seuil avant le retour à la normale (température) | `1.0` (°C) |
-| `HUM_HYSTERESIS` | Écart sous le seuil avant le retour à la normale (humidité) | `2.0` (%) |
 | `DELAI_RECONNEXION` | Délai entre deux tentatives d'ouverture du port série | `10` (secondes) |
 
 **Logique anti-spam** : le script n'envoie une notification **qu'aux transitions** :
@@ -375,6 +454,7 @@ Tous les paramètres sont regroupés en haut de `monitor_climat.py` :
 **Robustesse** :
 - L'alerte « pas de données » est active dès le démarrage : un capteur muet dès le départ est aussi signalé.
 - Un Arduino débranché ne fait plus planter le service : le port est rouvert automatiquement, et l'absence de données déclenche l'alerte au bout de `DELAI_SANS_DONNEES`.
+- Les préférences d'affichage (mode, composants, thème conservé) sont propres à chaque navigateur ; les seuils, alertes et couleurs sont enregistrés sur le NAS.
 - Les lignes série tronquées ou les valeurs hors plage sont ignorées.
 - L'Arduino envoie `ERR,...` quand la lecture du SHT31 échoue. Ces lignes ne comptent pas comme des mesures.
 - Si le CSV ne peut pas être écrit (volume non monté...), une notification unique est envoyée et les alertes restent actives.
@@ -385,6 +465,8 @@ Tous les paramètres sont regroupés en haut de `monitor_climat.py` :
 python3 -m unittest discover -s tests
 ```
 
+Les tests du dashboard sont ignorés si Flask n'est pas installé sur la machine.
+
 ---
 
 ## 🔧 Dépannage
@@ -394,14 +476,16 @@ python3 -m unittest discover -s tests
 | Port série absent | Vérifiez `/dev/ttyUSB*` / `/dev/ttyACM*`, `lsusb`, `dmesg \| tail` |
 | Données illisibles | Baudrate 9600 ? Droits série (`dialout`) ? |
 | CSV vide | `journalctl -u monitor-climat -n 50` |
-| `dashboard.py` introuvable | Relancez `sudo python3 setup_dashboard.py` |
+| `dashboard.py` introuvable | Recopiez `nas/dashboard.py` et le dossier `nas/static/` dans `monitoring` (étape 5) |
+| « Mot de passe incorrect » / « Aucun mot de passe n'est défini » | Sur le NAS : `cd $MON && sudo python3 config.py --mot-de-passe` |
+| `Configuration invalide` dans les logs | `sudo python3 config.py --verifier` indique la valeur en cause |
 | Dashboard inaccessible | Bonne IP ? Pare-feu OMV ? Port 5000 ouvert ? |
 | Thème ne change pas | Videz le cache navigateur (Ctrl+F5) |
 | Service ne démarre pas | `journalctl -u <monitor-climat\|dashboard-climat> -xe` |
 | Erreur "UUID not found" | Vérifiez que `VOTRE_UUID` a bien été remplacé |
 | Service bloqué au démarrage (`Dependency failed`) | Le volume n'est pas monté ou l'UUID est faux : `grep RequiresMountsFor /etc/systemd/system/*-climat.service` puis `ls /srv/` |
 | Erreur `externally-managed-environment` | N'utilisez pas `pip3` : installez les paquets `python3-*` avec `apt` (étape 6) |
-| Images absentes du dashboard | Copiez les images dans `monitoring/assets/` (étape 5) |
+| Images ou graphique absents du dashboard | Le dossier `monitoring/static/` est incomplet : recopiez `nas/static` (étape 5) |
 | **Erreur `latin-1 codec can't encode`** | Un emoji est présent dans un **titre** de notification. Les titres ne doivent contenir que de l'ASCII — les emojis sont OK dans le **corps** du message. |
 | Notification ntfy non reçue | Vérifiez que le conteneur tourne : `docker ps \| grep ntfy` |
 | ntfy inaccessible | Testez `curl http://localhost:8080/v1/health` sur le NAS |
@@ -412,7 +496,7 @@ python3 -m unittest discover -s tests
 ## 🔐 Sécurité
 
 - ❌ Ne **jamais** exposer Flask ou ntfy directement sur Internet
-- ✅ Ajouter une **authentification** (`flask-httpauth` pour le dashboard, ou auth ntfy)
+- ✅ L'enregistrement des réglages depuis le dashboard est protégé par **mot de passe** (empreinte PBKDF2 dans `config.json`). La consultation reste ouverte au réseau local. Pour ntfy, activez son authentification si besoin.
 - ✅ Restreindre l'accès au **LAN** via pare-feu
 - ✅ Les services tournent en `root` — acceptable en LAN, à durcir (user dédié) si exposé
 - ✅ Choisir un **nom de topic ntfy long et aléatoire** (il fait office de mot de passe)

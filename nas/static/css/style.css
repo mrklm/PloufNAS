@@ -1,0 +1,207 @@
+:root {
+    --bg: #f5f5f5;
+    --panel: #ffffff;
+    --fg: #333333;
+    --accent: #007bff;
+    --temp-color: #FF3B3B;
+    --hum-color: #3B8BFF;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+    background-color: var(--bg);
+    color: var(--fg);
+    font-family: Arial, sans-serif;
+    padding: 12px;
+    font-size: 13px;
+    transition: all 0.3s ease;
+    /* Pas de min-width : on laisse le CSS gérer */
+}
+
+/* Header */
+.header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.header h1 { margin: 0; display: flex; align-items: baseline; gap: 8px; }
+.header h1 .title { font-size: 1.5em; }
+.header h1 .version { font-size: 0.8em; opacity: 0.5; font-weight: normal; }
+.header button {
+    padding: 6px 14px; border-radius: 5px;
+    border: 1px solid var(--fg); background: var(--panel); color: var(--fg);
+    font-size: 0.9em; cursor: pointer; transition: all 0.2s;
+}
+.header button:hover { background: var(--accent); color: #fff; }
+
+/* ============================================= */
+/* BLOC AMBIANCE                                 */
+/* ============================================= */
+.ambiance {
+    background-color: var(--panel); padding: 12px; border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    display: flex; flex-direction: column; align-items: center; gap: 10px;
+    margin-bottom: 10px;
+}
+.ambiance .nas-icon { text-align: center; }
+.ambiance .nas-icon img { max-width: 70px; height: auto; }
+.ambiance .values { display: flex; gap: 20px; justify-content: center; align-items: center; }
+.ambiance .values .value {
+    background: var(--accent); color: #fff;
+    padding: 8px 14px; border-radius: 5px;
+    font-weight: bold; font-size: 1.1em; white-space: nowrap;
+}
+                
+.ambiance .chart {
+    position: relative;
+    width: 100%;
+    max-width: 100%;
+    height: 180px;
+    overflow: hidden;
+}
+.ambiance .chart canvas {
+    width: 100% !important;
+    height: 100% !important;
+    display: block;
+}    
+
+/* ============================================= */
+/* MODE COMPLET : grille fixe 3 colonnes         */
+/* ============================================= */
+body.mode-full .ambiance {
+    display: grid;
+    grid-template-columns: 80px 140px 1fr;
+    gap: 15px;
+    align-items: center;
+    padding: 10px 15px;
+}
+body.mode-full .ambiance .nas-icon { grid-column: 1; }
+body.mode-full .ambiance .nas-icon img { max-width: 80px; width: 100%; height: auto; }
+body.mode-full .ambiance .values {
+    grid-column: 2;
+    flex-direction: column;
+    gap: 5px;
+}
+body.mode-full .ambiance .values .value { padding: 6px 10px; font-size: 1em; width: 100%; text-align: center; }
+body.mode-full .ambiance .chart { grid-column: 3; height: 130px; }
+
+/* ============================================= */
+/* BLOC DISQUES + CPU : grille fixe 2 colonnes   */
+/* ============================================= */
+.bottom-row {
+    display: flex; flex-direction: column; gap: 10px;
+}
+.disks {
+    background-color: var(--panel); padding: 10px; border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    display: flex; justify-content: space-around; flex-wrap: wrap; gap: 8px;
+}
+.disk { text-align: center; cursor: help; transition: transform 0.2s; }
+.disk:hover { transform: translateY(-3px); }
+.disk img { width: 45px; height: auto; }
+.disk .name { font-weight: bold; margin: 3px 0; color: var(--accent); font-size: 0.8em; }
+.disk .temp {
+    background: var(--accent); color: #fff;
+    padding: 2px 6px; border-radius: 3px; font-size: 0.75em;
+    display: inline-block;
+}
+
+/* Bloc CPU + GPU */
+.system { display: flex; flex-direction: column; gap: 10px; }
+.system .block {
+    background-color: var(--panel); padding: 10px; border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1); text-align: center;
+}
+.system .block img { width: 55px; height: auto; }
+.system .block .name { font-weight: bold; font-size: 0.95em; margin: 4px 0; color: var(--accent); }
+.system .block .temp {
+    background: var(--accent); color: #fff;
+    padding: 3px 10px; border-radius: 3px; display: inline-block; font-size: 0.85em;
+}
+.system .block.disabled { opacity: 0.4; }
+
+/* En mode COMPLET : disques à gauche + CPU à droite sur la même ligne */
+body.mode-full .bottom-row {
+    display: grid;
+    grid-template-columns: 1fr 200px;
+    gap: 10px;
+    align-items: stretch;
+}
+body.mode-full .disks { margin-bottom: 0; }
+body.mode-full .system { margin-bottom: 0; }
+
+/* ============================================= */
+/* MODALE PARAMÈTRES                             */
+/* ============================================= */
+.modal-overlay {
+    display: none; position: fixed; top: 0; left: 0;
+    width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000;
+}
+.modal-overlay.active { display: flex; justify-content: center; align-items: center; }
+.modal {
+    background: var(--panel); color: var(--fg);
+    border-radius: 10px; padding: 15px 20px;
+    min-width: 420px; max-width: 90%; max-height: 95vh;
+    overflow-y: auto;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+    font-size: 0.9em;
+}
+.modal h2 {
+    margin: 0 0 10px 0; display: flex; justify-content: space-between;
+    align-items: center; font-size: 1.1em;
+}
+.modal h2 button { background: none; border: none; color: var(--fg); font-size: 1.3em; cursor: pointer; }
+.modal .section { margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid var(--fg); }
+.modal .section:last-of-type { border-bottom: none; }
+.modal .section h3 { margin: 0 0 5px 0; font-size: 0.85em; opacity: 0.7; text-transform: uppercase; letter-spacing: 0.5px; }
+.modal label { display: block; margin: 4px 0; font-size: 0.9em; }
+.modal select {
+    width: 100%; padding: 4px 6px; margin-top: 2px;
+    border-radius: 4px; border: 1px solid var(--fg);
+    background: var(--bg); color: var(--fg); font-size: 0.9em;
+}
+.modal .checkbox { display: flex; align-items: center; gap: 8px; margin: 5px 0; font-size: 0.9em; }
+.modal .checkbox input { width: 15px; height: 15px; }
+.modal .checkbox.disabled { opacity: 0.4; pointer-events: none; }
+.modal .threshold { display: flex; align-items: center; gap: 8px; margin: 3px 0 6px 25px; font-size: 0.85em; }
+.modal .threshold select { width: auto; margin: 0; padding: 3px 5px; }
+.modal .color-row { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
+.modal .color-row label { flex: 0 0 100px; margin: 0; }
+.modal .color-row input[type=color] {
+    width: 40px; height: 25px; padding: 0; border: 1px solid var(--fg);
+    border-radius: 4px; background: var(--bg); cursor: pointer;
+}
+.modal .color-row input[type=text] {
+    width: 80px; padding: 3px 5px; border-radius: 4px;
+    border: 1px solid var(--fg); background: var(--bg); color: var(--fg);
+    font-size: 0.85em; font-family: monospace;
+}
+.modal .number-row { display: flex; align-items: center; gap: 8px; margin: 5px 0; font-size: 0.9em; }
+.modal .number-row label { flex: 0 0 130px; margin: 0; }
+.modal .number-row input {
+    width: 90px; padding: 3px 5px; border-radius: 4px;
+    border: 1px solid var(--fg); background: var(--bg); color: var(--fg); font-size: 0.9em;
+}
+.modal .number-row input[type=password] { width: 170px; }
+.modal .hint { font-size: 0.8em; opacity: 0.7; margin-top: 3px; }
+.modal .message { min-height: 1em; margin-top: 6px; font-size: 0.9em; }
+.modal .message.erreur { background: #B00020; color: #FFFFFF; padding: 4px 8px; border-radius: 4px; font-weight: bold; }
+.modal .message.info { opacity: 0.85; }
+.modal .actions { text-align: right; margin-top: 10px; }
+.modal .actions button {
+    padding: 6px 16px; border-radius: 5px; border: none;
+    background: var(--accent); color: #fff; font-size: 0.9em; cursor: pointer;
+}
+
+/* ============================================= */
+/* RESPONSIVE (mobile)                           */
+/* ============================================= */
+@media (max-width: 600px) {
+    body { min-width: auto; }
+    body.mode-full .ambiance {
+        grid-template-columns: 1fr;
+        text-align: center;
+    }
+    body.mode-full .ambiance .nas-icon,
+    body.mode-full .ambiance .values,
+    body.mode-full .ambiance .chart { grid-column: 1; }
+    body.mode-full .bottom-row { grid-template-columns: 1fr; }
+    .modal { min-width: auto; width: 95%; font-size: 0.85em; }
+}
+

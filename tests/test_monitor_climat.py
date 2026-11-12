@@ -3,9 +3,11 @@
 Lancement depuis la racine du dépôt :
     python3 -m unittest discover -s tests
 """
+import json
 import os
 import sys
 import tempfile
+import time
 import unittest
 from unittest import mock
 
@@ -184,6 +186,63 @@ class TestEcriture(unittest.TestCase):
         with mock.patch.object(mc, "fichier_log", "/chemin/inexistant/climat.csv"):
             with self.assertRaises(OSError):
                 mc.ecrire_csv("2026-11-12 10:00:00", 22.4, 47.2)
+
+
+class TestRechargementConfig(unittest.TestCase):
+    def setUp(self):
+        self.dossier = tempfile.TemporaryDirectory()
+        self.chemin = os.path.join(self.dossier.name, "config.json")
+        # Sauvegarde des variables globales modifiées par appliquer_config()
+        self.sauvegarde = {k: getattr(mc, k) for k in (
+            "port_serie", "fichier_log", "NTFY_URL", "TEMP_MAX", "HUM_MAX",
+            "TEMP_HYSTERESIS", "HUM_HYSTERESIS")}
+        self.patch = mock.patch.object(mc.config, "CHEMIN_CONFIG", self.chemin)
+        self.patch.start()
+
+    def tearDown(self):
+        self.patch.stop()
+        for k, v in self.sauvegarde.items():
+            setattr(mc, k, v)
+        self.dossier.cleanup()
+
+    def ecrire(self, contenu):
+        with open(self.chemin, "w") as f:
+            f.write(contenu)
+        # Garantit une signature différente même si l'écriture tombe dans la même ns
+        os.utime(self.chemin, ns=(time.time_ns(), time.time_ns() + self.decalage))
+        self.decalage += 1_000_000
+
+    decalage = 0
+
+    def test_chargement_et_rechargement(self):
+        suivi = mc.SuiviConfig()
+        suivi.charger_initial()     # crée config.json avec les valeurs par défaut
+        self.assertEqual(mc.HUM_MAX, 80.0)
+        self.assertEqual(mc.fichier_log, os.path.join(self.dossier.name, "climat.csv"))
+        self.assertFalse(suivi.recharger_si_modifiee())
+
+        self.ecrire(json.dumps({"seuils": {"hum_max": 65}, "ntfy_url": "http://n/t"}))
+        self.assertTrue(suivi.recharger_si_modifiee())
+        self.assertEqual(mc.HUM_MAX, 65.0)
+        self.assertEqual(mc.NTFY_URL, "http://n/t")
+
+    def test_config_invalide_ignoree(self):
+        suivi = mc.SuiviConfig()
+        suivi.charger_initial()
+        self.ecrire('{"seuils": {"hum_max": 500}}')
+        self.assertFalse(suivi.recharger_si_modifiee())
+        self.assertEqual(mc.HUM_MAX, 80.0)
+
+    def test_nouveau_seuil_utilise_par_la_surveillance(self):
+        suivi = mc.SuiviConfig()
+        suivi.charger_initial()
+        s, notif, _ = nouvelle_surveillance()
+        s.enregistrer_mesure(22.0, 70.0)
+        self.assertEqual(notif.titres, [])
+        self.ecrire(json.dumps({"seuils": {"hum_max": 65}}))
+        suivi.recharger_si_modifiee()
+        s.enregistrer_mesure(22.0, 70.0)
+        self.assertEqual(notif.titres, ["[ALERTE] Humidite NAS"])
 
 
 class TestEnvoyerNtfy(unittest.TestCase):

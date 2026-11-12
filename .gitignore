@@ -16,3 +16,8 @@ __pycache__/
 # Environnements virtuels
 venv/
 .venv/
+
+# Données locales PloufNAS (contiennent le topic ntfy et le hash du mot de passe)
+config.json
+climat.csv
+.config-*.tmp

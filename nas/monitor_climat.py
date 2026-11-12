@@ -1,4 +1,5 @@
 import logging
+import os
 import sys
 import time
 from datetime import datetime
@@ -6,24 +7,25 @@ from datetime import datetime
 import requests
 import serial
 
-# ============================================================
-# CONFIGURATION — À PERSONNALISER
-# ============================================================
-port_serie  = '/dev/arduino_nas'
-fichier_log = '/srv/dev-disk-by-uuid-VOTRE_UUID/monitoring/climat.csv'
+import config
 
-# Seuils d'alerte
-TEMP_MAX = 30.0    # °C
-HUM_MAX  = 80.0    # %
-
+# ============================================================
+# CONFIGURATION
+# ============================================================
+# Port série, fichier CSV, URL ntfy et seuils se règlent dans config.json
+# (voir config.py). Les valeurs ci-dessous sont remplacées au démarrage, puis à
+# chaque modification de config.json (par exemple depuis le dashboard).
+port_serie      = config.DEFAUTS["port_serie"]
+fichier_log     = config.chemin_csv(config.DEFAUTS)
+NTFY_URL        = config.DEFAUTS["ntfy_url"]
+TEMP_MAX        = config.DEFAUTS["seuils"]["temp_max"]          # °C
+HUM_MAX         = config.DEFAUTS["seuils"]["hum_max"]           # %
 # Hystérésis : retour à la normale seulement sous (seuil - hystérésis).
 # Évite les rafales de notifications quand la valeur oscille autour du seuil.
-TEMP_HYSTERESIS = 1.0   # °C
-HUM_HYSTERESIS  = 2.0   # %
+TEMP_HYSTERESIS = config.DEFAUTS["seuils"]["temp_hysteresis"]   # °C
+HUM_HYSTERESIS  = config.DEFAUTS["seuils"]["hum_hysteresis"]    # %
 
-# ntfy (instance locale)
-NTFY_URL = "http://localhost:8080/VOTRE-TOPIC"
-
+# Réglages avancés (modifiables ici uniquement)
 # Alerte "pas de données" : délai sans réception avant alerte
 DELAI_SANS_DONNEES = 15 * 60   # 15 minutes
 
@@ -39,6 +41,63 @@ HUM_PLAGE  = (0.0, 100.0)
 ENTETE_CSV = "Date et Heure,Temperature_C,Humidite_Pct\n"
 
 log = logging.getLogger("monitor_climat")
+
+
+# ============================================================
+# CONFIG (chargement et rechargement à chaud)
+# ============================================================
+def appliquer_config(cfg):
+    """Reporte une config validée dans les variables utilisées par le script."""
+    global port_serie, fichier_log, NTFY_URL
+    global TEMP_MAX, HUM_MAX, TEMP_HYSTERESIS, HUM_HYSTERESIS
+    port_serie = cfg["port_serie"]
+    fichier_log = config.chemin_csv(cfg)
+    NTFY_URL = cfg["ntfy_url"]
+    seuils = cfg["seuils"]
+    TEMP_MAX = seuils["temp_max"]
+    HUM_MAX = seuils["hum_max"]
+    TEMP_HYSTERESIS = seuils["temp_hysteresis"]
+    HUM_HYSTERESIS = seuils["hum_hysteresis"]
+
+
+class SuiviConfig:
+    """Recharge config.json quand il a été modifié. Une config invalide est ignorée."""
+
+    def __init__(self, chemin=None):
+        self.chemin = chemin or config.CHEMIN_CONFIG
+        self.signature = None
+
+    def _signature(self):
+        try:
+            st = os.stat(self.chemin)
+        except OSError:
+            return None
+        return (st.st_mtime_ns, st.st_size)
+
+    def charger_initial(self):
+        cfg = config.charger(self.chemin)      # lève ConfigInvalide
+        self.signature = self._signature()
+        appliquer_config(cfg)
+        return cfg
+
+    def recharger_si_modifiee(self):
+        """Retourne True si une nouvelle config a été appliquée."""
+        signature = self._signature()
+        if signature is None or signature == self.signature:
+            return False
+        self.signature = signature
+        try:
+            cfg = config.charger(self.chemin, creer=False)
+        except ConfigInvalide as e:
+            log.error("config.json invalide, l'ancienne configuration reste active : %s", e)
+            return False
+        appliquer_config(cfg)
+        log.info("Configuration rechargée : seuils %s°C / %s%%, hystérésis %s°C / %s%%.",
+                 TEMP_MAX, HUM_MAX, TEMP_HYSTERESIS, HUM_HYSTERESIS)
+        return True
+
+
+ConfigInvalide = config.ConfigInvalide
 
 
 # ============================================================
@@ -293,6 +352,16 @@ def main():
     # Le flux est vidé à chaque ligne, pour que journalctl affiche les logs en direct.
     sys.stdout.reconfigure(line_buffering=True)
 
+    suivi = SuiviConfig()
+    try:
+        suivi.charger_initial()
+    except ConfigInvalide as e:
+        log.critical("Configuration invalide, arrêt : %s", e)
+        sys.exit(1)
+    if NTFY_URL == config.NTFY_NON_CONFIGURE:
+        log.warning("ntfy_url n'est pas configurée dans %s : aucune notification ne "
+                    "sera reçue.", suivi.chemin)
+
     surveillance = Surveillance()
     # Retentée à chaque cycle tant qu'elle n'est pas passée : au démarrage du NAS,
     # le conteneur ntfy peut être prêt après ce service.
@@ -305,6 +374,13 @@ def main():
     derniere_ecriture = None
 
     while True:
+        ancien_port = port_serie
+        if suivi.recharger_si_modifiee() and port_serie != ancien_port and ser is not None:
+            log.info("Port série modifié : reconnexion sur %s.", port_serie)
+            ser.close()
+            ser = None
+            prochaine_connexion = 0.0
+
         # (Re)connexion au port série sans faire planter le service :
         # l'absence de données est signalée par l'alerte de silence.
         if ser is None and time.monotonic() >= prochaine_connexion:

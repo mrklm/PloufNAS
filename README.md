@@ -595,7 +595,7 @@ Le jeton est pris en compte sans redémarrage ; le redémarrage sert seulement �
 
 > ⚠️ L'adresse du serveur doit être **exactement** celle de l'abonnement au topic, au caractère près : `http://IP-DU-NAS:8080` et `http://IP-DU-NAS:8080/` sont deux serveurs différents pour l'application, qui affiche alors une erreur 401/403. L'adresse d'un compte ne se modifie pas : supprimez-le et ajoutez-le de nouveau.
 >
-> Si un jeton a été divulgué : `ntfy token add ploufnas`, `sudo python3 config.py --jeton-ntfy` avec le nouveau, puis `ntfy token remove ploufnas tk_ancien`.
+> Si un jeton a été divulgué : `ntfy token add ploufnas`, `sudo python3 config.py --jeton-ntfy` avec le nouveau, puis `ntfy token remove ploufnas tk_ancien`. Attention : `ntfy token list` affiche les jetons **en entier** ; pour vérifier sans les montrer, comptez-les avec `sudo docker exec ntfy ntfy token list ploufnas | grep -c tk_`.
 
 > ⚠️ Hors du réseau local, `ntfy_url` doit commencer par `https://` : en HTTP, le jeton circule en clair. PloufNAS le signale au démarrage dans `journalctl`.
 >

@@ -297,6 +297,13 @@ Si tout fonctionne → passez à systemd. Sinon → inspectez les erreurs affich
 **1. Créez le compte du dashboard** et réglez les droits des fichiers de configuration (variables `UUID` et `MON` de l'étape 5) :
 
 ```bash
+# OMV : un dossier partagé reçoit des ACL qui le rendent modifiable par les utilisateurs
+# du NAS (le « + » dans ls -l). Ils pourraient alors modifier les scripts exécutés en root.
+# Sauvegarde des ACL, puis seul root peut écrire (la lecture reste possible pour tous).
+sudo sh -c 'getfacl -R -p "$0" > /root/monitoring-acl.sauvegarde' "${MON:?}"
+sudo setfacl -R -b "${MON:?}"
+sudo chown -R root:root "${MON:?}" && sudo chmod g-s "${MON:?}" && sudo chmod -R go-w "${MON:?}"
+
 # Compte système sans mot de passe ni connexion possible
 sudo useradd --system --no-create-home --shell /usr/sbin/nologin ploufnas
 
@@ -306,10 +313,13 @@ sudo chown -R ploufnas:ploufnas "${MON:?}/reglages" && sudo chmod 750 "${MON:?}/
 sudo chgrp ploufnas "${MON:?}/config.json" && sudo chmod 640 "${MON:?}/config.json"
 sudo chmod 600 "${MON:?}/ntfy.json"
 
-# Vérification : « OK » puis « refusé »
+# Vérification : « OK » puis « refusé », et aucun « + » dans la liste
 sudo -u ploufnas test -r "${MON:?}/config.json" && echo OK
 sudo -u ploufnas test -r "${MON:?}/ntfy.json" || echo refusé
+ls -la "${MON:?}"
 ```
+
+> 💡 Pour annuler le retrait des ACL : `sudo setfacl --restore=/root/monitoring-acl.sauvegarde`. Pour donner accès aux données depuis le réseau, partagez-les en **lecture seule** (privilèges du dossier partagé dans OMV), jamais en écriture.
 
 **2. Installez les services.** Les fichiers sont fournis dans `nas/`. Il faut les copier dans `/etc/systemd/system/` puis y remplacer `VOTRE_UUID` :
 
@@ -423,6 +433,12 @@ sudo udevadm control --reload-rules && sudo udevadm trigger
 ls -l /dev/arduino_nas
 
 # 8. Compte du dashboard et droits des fichiers (voir étape 8.1 de l'installation)
+# OMV : un dossier partagé reçoit des ACL qui le rendent modifiable par les utilisateurs
+# du NAS (le « + » dans ls -l). Ils pourraient alors modifier les scripts exécutés en root.
+# Sauvegarde des ACL, puis seul root peut écrire (la lecture reste possible pour tous).
+sudo sh -c 'getfacl -R -p "$0" > /root/monitoring-acl.sauvegarde' "${MON:?}"
+sudo setfacl -R -b "${MON:?}"
+sudo chown -R root:root "${MON:?}" && sudo chmod g-s "${MON:?}" && sudo chmod -R go-w "${MON:?}"
 sudo useradd --system --no-create-home --shell /usr/sbin/nologin ploufnas
 sudo mkdir -p "${MON:?}/reglages"
 sudo chown -R ploufnas:ploufnas "${MON:?}/reglages" && sudo chmod 750 "${MON:?}/reglages"
@@ -576,7 +592,7 @@ sudo systemctl restart monitor-climat
 ls "${MON:?}/ntfy.json" "${MON:?}/reglages/reglages.json"
 ```
 
-Puis suivez l'[étape 8](#étape-8--installation-des-services-systemd) : création du compte et droits (8.1), copie du nouveau `dashboard-climat.service` avec remplacement de l'UUID (8.2), et enfin `sudo systemctl daemon-reload && sudo systemctl restart dashboard-climat`.
+Puis suivez l'[étape 8](#étape-8--installation-des-services-systemd) : ACL d'OMV, création du compte et droits (8.1), copie du nouveau `dashboard-climat.service` avec remplacement de l'UUID (8.2), et enfin `sudo systemctl daemon-reload && sudo systemctl restart dashboard-climat`.
 
 ### Options du dashboard (section `dashboard` de `config.json`)
 

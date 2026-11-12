@@ -14,6 +14,11 @@ et ce projet adhère au [versionnage sémantique](https://semver.org/lang/fr/).
   avec LCD et bouton en facade + capteurs int/ext ?
 - Suite du mode « accès extérieur » : guide d'accès distant par VPN ou reverse proxy HTTPS
 
+### Corrigé
+- README : passage à la 1.3.0 validé sur OMV 8 ; retrait des ACL qu'OMV pose sur un dossier
+  partagé (elles rendaient le dossier `monitoring`, et donc les scripts exécutés en root,
+  modifiables par les utilisateurs du NAS), avec sauvegarde et restauration
+
 ## [1.3.0] - 2026-11-12
 
 ### Modifié

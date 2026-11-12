@@ -8,11 +8,13 @@ et ce projet adhère au [versionnage sémantique](https://semver.org/lang/fr/).
 ## [Non publié]
 
 ### À venir
-- Support pour l'accès distant aux alertes ?
 - Ajout d'un second capteur pour comparaison ?
 - joindre un fichier STL pour mettre l'arduino dans le compartiement cdrom
   avec LCD et bouton en facade + capteurs int/ext ?
-- Suite du mode « accès extérieur » : guide d'accès distant par VPN ou reverse proxy HTTPS
+
+### Ajouté
+- README : guide « Accès depuis l'extérieur » — VPN Tailscale (recommandé) ou WireGuard,
+  reverse proxy HTTPS avec Caddy (réglages du dashboard et de ntfy, vérifications)
 
 ### Corrigé
 - README : passage à la 1.3.0 validé sur OMV 8 ; retrait des ACL qu'OMV pose sur un dossier

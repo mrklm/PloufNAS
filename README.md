@@ -368,7 +368,7 @@ Le bouton **?**, à droite de **⚙️ Paramètres**, ouvre une aide résumée d
 
 Dans **⚙️ Paramètres**, l'affichage (mode, composants, thème) est propre à chaque navigateur et se modifie librement. Les seuils, les alertes et les couleurs sont enregistrés sur le NAS : dès que l'un d'eux est modifié, le bouton devient **Enregistrer sur le NAS** et reste grisé tant que le mot de passe n'est pas saisi. Fermer le panneau sans enregistrer annule ces modifications.
 
-**Optionnel** — accès depuis l'extérieur : voir la section [🔐 Sécurité](#-sécurité). ⚠️ **N'exposez jamais le dashboard directement sur Internet**, sans HTTPS.
+**Optionnel** — accès depuis l'extérieur : voir [Accès depuis l'extérieur](#accès-depuis-lextérieur) (VPN recommandé, ou reverse proxy HTTPS). ⚠️ **N'exposez jamais le dashboard directement sur Internet**.
 
 ---
 
@@ -561,7 +561,7 @@ Les tests du dashboard sont ignorés si Flask n'est pas installé sur la machine
 
 ## 🔐 Sécurité
 
-- ❌ Ne **jamais** exposer Flask ou ntfy directement sur Internet
+- ❌ Ne **jamais** exposer Flask ou ntfy directement sur Internet : passez par un VPN ou un reverse proxy HTTPS ([Accès depuis l'extérieur](#accès-depuis-lextérieur))
 - ✅ L'enregistrement des réglages depuis le dashboard est protégé par **mot de passe** (empreinte PBKDF2 dans `config.json`). Par défaut, la consultation reste ouverte au réseau local. Pour ntfy, activez son authentification si besoin ([jeton](#protéger-ntfy-par-un-jeton-facultatif)).
 - ✅ Après **5 mots de passe incorrects en 15 minutes**, l'adresse IP concernée est bloquée jusqu'à la fin de ce délai.
 - ✅ La page applique une politique de sécurité stricte (CSP : aucun script extérieur ni en ligne, pas d'affichage dans un cadre) et les réglages ne peuvent pas être envoyés depuis un autre site.
@@ -668,6 +668,82 @@ Le jeton est pris en compte sans redémarrage ; le redémarrage sert seulement �
 > ⚠️ Hors du réseau local, `ntfy_url` doit commencer par `https://` : en HTTP, le jeton circule en clair. PloufNAS le signale au démarrage dans `journalctl`.
 >
 > Pour revenir sans authentification : retirez les deux variables `NTFY_AUTH_*` du fichier Compose et mettez `"ntfy_jeton": ""` dans `ntfy.json`.
+
+### Accès depuis l'extérieur
+
+Par défaut, PloufNAS n'est accessible que sur votre réseau local, et c'est le plus sûr. Pour consulter le dashboard ou recevoir les alertes hors de chez vous, **n'ouvrez jamais** les ports 5000 (dashboard) ou 8080 (ntfy) sur votre box : passez par un **VPN** (recommandé) ou par un **reverse proxy HTTPS**.
+
+| | VPN (Tailscale, WireGuard) | Reverse proxy HTTPS (Caddy) |
+|---|---|---|
+| Ce qui est visible sur Internet | rien | le dashboard et ntfy, protégés par mot de passe |
+| Nom de domaine, ouverture de ports | non (Tailscale) | oui (domaine, ports 80 et 443) |
+| Sur le téléphone | l'application VPN doit être active | rien de plus |
+| Difficulté | faible | moyenne |
+
+#### Option 1 — VPN avec Tailscale (recommandé)
+
+Tailscale crée un réseau privé chiffré entre vos appareils, sans ouvrir de port sur la box.
+
+```bash
+# Sur le NAS
+curl -fsSL https://tailscale.com/install.sh | sh
+sudo tailscale up            # affiche un lien : ouvrez-le pour connecter le NAS à votre compte
+tailscale ip -4              # adresse du NAS sur le réseau Tailscale (100.x.y.z)
+```
+
+Installez ensuite l'application **Tailscale** sur le téléphone, avec le même compte. Le dashboard est alors accessible partout à l'adresse `http://100.x.y.z:5000`.
+
+> 💡 **ntfy** : dans l'application, abonnez-vous au topic sur le serveur `http://100.x.y.z:8080`, l'adresse Tailscale, plutôt que sur l'adresse locale. Elle fonctionne à la maison comme à l'extérieur, et vous évite deux abonnements. Si l'authentification ntfy est active, le compte `telephone` doit être déclaré pour cette même adresse.
+
+Alternative sans compte extérieur : **WireGuard**, à installer sur le NAS (plugin `openmediavault-wireguard` d'omv-extras, s'il est disponible pour votre version d'OMV). Il faut alors ouvrir **un seul** port UDP sur la box, celui du VPN.
+
+#### Option 2 — Reverse proxy HTTPS avec Caddy
+
+À réserver aux cas où un VPN n'est pas possible. Il faut un nom de domaine (par exemple `nas.example.org` et `ntfy.example.org`) qui pointe vers votre adresse IP publique, et rediriger les ports **80 et 443** de la box vers le NAS. Caddy obtient et renouvelle seul les certificats HTTPS.
+
+**1. Libérer les ports 80 et 443.** L'interface web d'OMV les utilise : changez son port dans **Système → Workbench** (par exemple 8000), puis reconnectez-vous sur `http://IP-DU-NAS:8000`.
+
+**2. Réserver le dashboard et ntfy au proxy.** Dans `config.json`, section `dashboard` :
+
+```json
+"dashboard": {
+    "adresse": "127.0.0.1",
+    "port": 5000,
+    "consultation_protegee": true,
+    "derriere_proxy": true
+}
+```
+
+puis `sudo systemctl restart dashboard-climat`. Dans le fichier Compose de ntfy, remplacez `"8080:80"` par `"127.0.0.1:8080:80"`, ajoutez `NTFY_BASE_URL=https://ntfy.example.org` et `NTFY_BEHIND_PROXY=true` aux variables d'environnement, **activez l'authentification** ([jeton](#protéger-ntfy-par-un-jeton-facultatif)), puis cliquez sur **Up**. `ntfy_url` (dans `ntfy.json`) peut rester sur `http://localhost:8080/…` : la surveillance publie depuis le NAS lui-même.
+
+**3. Créer le conteneur Caddy** (Services → Compose → Fichiers) :
+
+```yaml
+services:
+  caddy:
+    image: caddy:2
+    container_name: caddy
+    network_mode: host          # pour joindre 127.0.0.1:5000 et 127.0.0.1:8080
+    volumes:
+      - CHANGE_TO_COMPOSE_DATA_PATH/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - CHANGE_TO_COMPOSE_DATA_PATH/caddy/data:/data
+    restart: unless-stopped
+```
+
+avec ce fichier `Caddyfile` :
+
+```
+nas.example.org {
+    reverse_proxy 127.0.0.1:5000
+}
+ntfy.example.org {
+    reverse_proxy 127.0.0.1:8080
+}
+```
+
+**4. Vérifier depuis l'extérieur** (téléphone en 4G, Wi-Fi coupé) : `https://nas.example.org` doit demander le mot de passe, et `http://VOTRE-IP-PUBLIQUE:5000` ne doit **pas** répondre. Dans l'application ntfy, abonnez-vous sur `https://ntfy.example.org` avec le compte `telephone`.
+
+> ⚠️ Avec un reverse proxy, le dashboard est visible de tout Internet : choisissez un mot de passe long, gardez le système à jour, et n'exposez **jamais** l'interface d'OMV de la même façon. Après 5 mots de passe faux, une adresse est bloquée 15 minutes ; cela ne remplace pas un VPN.
 
 ---
 

@@ -42,6 +42,11 @@ HYSTERESIS_CPU      = 3.0      # °C sous le seuil avant le retour à la normale
 HYSTERESIS_DISQUE   = 2.0      # °C
 ECHECS_DISQUE_MUET  = 2        # relevés SMART ratés de suite avant l'alerte « ne répond plus »
 DELAI_RECONNEXION   = 10       # secondes entre deux tentatives d'ouverture du port
+# Arduino figé (port ouvert, mais plus aucune ligne) : redémarrage par le signal DTR,
+# comme le bouton reset. L'Arduino envoie une ligne toutes les 2 s ; le délai double
+# à chaque essai sans effet, pour ne pas le redémarrer en boucle s'il est hors service.
+DELAI_RELANCE_ARDUINO     = 60        # secondes de silence avant le premier essai
+DELAI_RELANCE_ARDUINO_MAX = 30 * 60   # écart maximal entre deux essais
 
 # Plages physiquement plausibles (capteur SHT31) : au-delà, la ligne est rejetée
 TEMP_PLAGE = (-40.0, 125.0)
@@ -463,6 +468,40 @@ def ecrire_csv(horodatage, temp, hum):
         f.write(f"{horodatage},{temp},{hum}\n")
 
 
+class RelanceArduino:
+    """Décide quand redémarrer un Arduino dont le port est ouvert mais muet.
+
+    Toute ligne reconnue compte, y compris une erreur capteur : l'Arduino répond
+    alors, ce n'est pas lui qu'il faut redémarrer.
+    """
+
+    def __init__(self, horloge=time.monotonic):
+        self.horloge = horloge
+        self.activite()
+
+    def activite(self):
+        """À appeler à chaque ligne reçue et à chaque ouverture du port."""
+        self.depuis = self.horloge()
+        self.delai = DELAI_RELANCE_ARDUINO
+        self.essais = 0
+
+    def doit_relancer(self):
+        if self.horloge() - self.depuis < self.delai:
+            return False
+        self.depuis = self.horloge()
+        self.essais += 1
+        self.delai = min(self.delai * 2, DELAI_RELANCE_ARDUINO_MAX)
+        return True
+
+
+def redemarrer_arduino(ser):
+    """Impulsion sur DTR : redémarre les cartes à reset automatique (Uno, Nano...)."""
+    ser.dtr = False
+    time.sleep(0.25)
+    ser.dtr = True
+    ser.reset_input_buffer()
+
+
 # ============================================================
 # BOUCLE PRINCIPALE
 # ============================================================
@@ -525,6 +564,7 @@ def main():
     prochaine_connexion = 0.0
     echec_connexion_signale = False
     derniere_ecriture = None
+    relance = RelanceArduino()
 
     while True:
         ancien_port = port_serie
@@ -543,6 +583,7 @@ def main():
                 prochaine_connexion = time.monotonic() + DELAI_RECONNEXION
             else:
                 echec_connexion_signale = False
+                relance.activite()   # l'ouverture du port redémarre déjà l'Arduino
 
         if ser is not None:
             try:
@@ -556,6 +597,17 @@ def main():
                 ser = None
                 prochaine_connexion = time.monotonic() + DELAI_RECONNEXION
                 resultat = None
+
+            if resultat is not None:
+                relance.activite()
+            elif ser is not None and relance.doit_relancer():
+                log.warning("L'Arduino ne répond plus : redémarrage de la carte (essai %s, "
+                            "prochain essai dans %s min si besoin).",
+                            relance.essais, relance.delai // 60)
+                try:
+                    redemarrer_arduino(ser)
+                except (serial.SerialException, OSError) as e:
+                    log.warning("Redémarrage de l'Arduino impossible : %s", e)
 
             if resultat == "ERR":
                 log.warning("L'Arduino signale une erreur de lecture du capteur.")

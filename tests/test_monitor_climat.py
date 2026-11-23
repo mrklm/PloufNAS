@@ -161,6 +161,48 @@ class TestSilence(unittest.TestCase):
         self.assertEqual(s.etat_donnees, "alerte")
 
 
+class TestRelanceArduino(unittest.TestCase):
+    def setUp(self):
+        self.horloge = HorlogeFactice()
+        self.relance = mc.RelanceArduino(horloge=self.horloge)
+
+    def test_pas_de_relance_avant_le_delai(self):
+        self.horloge.t += mc.DELAI_RELANCE_ARDUINO - 1
+        self.assertFalse(self.relance.doit_relancer())
+
+    def test_relance_apres_le_delai(self):
+        self.horloge.t += mc.DELAI_RELANCE_ARDUINO
+        self.assertTrue(self.relance.doit_relancer())
+        self.assertFalse(self.relance.doit_relancer())   # pas deux fois de suite
+
+    def test_delai_double_puis_plafonne(self):
+        delais = []
+        for _ in range(10):
+            self.horloge.t += self.relance.delai
+            self.assertTrue(self.relance.doit_relancer())
+            delais.append(self.relance.delai)
+        self.assertEqual(delais[0], 2 * mc.DELAI_RELANCE_ARDUINO)
+        self.assertEqual(delais[-1], mc.DELAI_RELANCE_ARDUINO_MAX)
+
+    def test_activite_remet_a_zero(self):
+        for _ in range(3):
+            self.horloge.t += self.relance.delai
+            self.relance.doit_relancer()
+        self.relance.activite()
+        self.assertEqual(self.relance.essais, 0)
+        self.horloge.t += mc.DELAI_RELANCE_ARDUINO - 1
+        self.assertFalse(self.relance.doit_relancer())
+
+    def test_impulsion_dtr(self):
+        port = mock.Mock()
+        etats = []
+        type(port).dtr = mock.PropertyMock(side_effect=etats.append)
+        with mock.patch.object(mc.time, "sleep"):
+            mc.redemarrer_arduino(port)
+        self.assertEqual(etats, [False, True])
+        port.reset_input_buffer.assert_called_once()
+
+
 class TestEcriture(unittest.TestCase):
     def test_alerte_unique_puis_retablissement(self):
         s, notif, _ = nouvelle_surveillance()

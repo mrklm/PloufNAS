@@ -11,6 +11,43 @@ SHT31 sht31;
 
 bool capteurOK = false;
 
+// Un composant I2C (capteur ou LCD) peut rester bloqué au milieu d'un échange, par
+// exemple après une coupure brève de l'USB au redémarrage du NAS : il maintient SDA
+// à 0 et la carte attend indéfiniment. Ce blocage survit au reset de l'Arduino, car
+// le capteur et le LCD restent alimentés ; seul un débranchement le levait.
+// Remède : jusqu'à 9 impulsions sur SCL pour que le composant termine son octet et
+// relâche SDA, puis une condition STOP.
+void libererBusI2C() {
+  pinMode(SDA, INPUT_PULLUP);
+  pinMode(SCL, INPUT_PULLUP);
+  delayMicroseconds(10);
+  for (int i = 0; i < 9 && digitalRead(SDA) == LOW; i++) {
+    pinMode(SCL, OUTPUT);
+    digitalWrite(SCL, LOW);
+    delayMicroseconds(10);
+    pinMode(SCL, INPUT_PULLUP);
+    delayMicroseconds(10);
+  }
+  // STOP : SDA passe de 0 à 1 pendant que SCL est à 1
+  pinMode(SDA, OUTPUT);
+  digitalWrite(SDA, LOW);
+  delayMicroseconds(10);
+  pinMode(SDA, INPUT_PULLUP);
+  delayMicroseconds(10);
+}
+
+// (Re)démarre le bus I2C et le LCD. lcd.init() appelle Wire.begin(), qui remet
+// l'horloge à 100 kHz : la vitesse et le délai maximal se règlent donc après.
+void demarrerI2C() {
+  libererBusI2C();
+  lcd.init();
+  lcd.backlight();
+  Wire.setClock(50000); // 50kHz pour la stabilité avec les clones
+  // Sans délai maximal (désactivé par défaut), un échange I2C bloqué fige la carte
+  // pour toujours. Nécessite le cœur Arduino AVR 1.8.3 ou plus récent.
+  Wire.setWireTimeout(25000, true);
+}
+
 bool initCapteur() {
   if (sht31.begin()) {
     Serial.println("SHT31 initialise avec succes.");
@@ -29,11 +66,8 @@ void afficherErreur(const char* ligne2) {
 
 void setup() {
   Serial.begin(9600);
-  Wire.begin();
-  Wire.setClock(50000); // 50kHz pour la stabilité avec les clones
+  demarrerI2C();
 
-  lcd.init();
-  lcd.backlight();
   lcd.setCursor(0, 0);
   lcd.print("Init LCD OK !");
   delay(1000);
@@ -52,6 +86,9 @@ void setup() {
 void loop() {
   // Capteur absent au démarrage ou perdu : on retente l'initialisation.
   if (!capteurOK) {
+    // Le bus est peut-être bloqué : on le libère avant de réessayer.
+    Wire.end();
+    demarrerI2C();
     capteurOK = initCapteur();
     if (!capteurOK) {
       afficherErreur("Init impossible ");

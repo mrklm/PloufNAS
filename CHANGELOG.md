@@ -17,6 +17,13 @@ et ce projet adhère au [versionnage sémantique](https://semver.org/lang/fr/).
   reverse proxy HTTPS avec Caddy (réglages du dashboard et de ntfy, vérifications)
 
 ### Corrigé
+- Arduino figé après un redémarrage du NAS (port ouvert, plus aucune mesure, il fallait
+  débrancher la carte) :
+  - Arduino : délai maximal sur le bus I2C (désactivé par défaut, un échange bloqué figeait
+    la carte) et libération du bus au démarrage et après une perte du capteur
+  - NAS : un Arduino muet depuis 1 min est redémarré par le signal DTR, puis avec un écart
+    doublé à chaque essai (30 min au plus)
+- Arduino : l'horloge I2C à 50 kHz est réglée après `lcd.init()`, qui la remettait à 100 kHz
 - README : passage à la 1.3.0 validé sur OMV 8 ; retrait des ACL qu'OMV pose sur un dossier
   partagé (elles rendaient le dossier `monitoring`, et donc les scripts exécutés en root,
   modifiables par les utilisateurs du NAS), avec sauvegarde et restauration

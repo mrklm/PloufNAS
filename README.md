@@ -75,7 +75,7 @@ C'est pourquoi je vous propose un système complet et robuste de surveillance de
 1. Installez les bibliothèques suivantes via le gestionnaire de bibliothèques de l'IDE Arduino :
    - `LiquidCrystal I2C` (par Frank de Brabander)
    - `SHT31` (par Rob Tillaart)
-2. Téléversez le code situé dans `arduino/sht31_nas_monitor/sht31_nas_monitor.ino`.
+2. Téléversez le code situé dans `arduino/sht31_nas_monitor/sht31_nas_monitor.ino` (cœur **Arduino AVR Boards 1.8.3** ou plus récent, à vérifier dans le gestionnaire de cartes).
 3. Ouvrez le moniteur série à **9600 bauds** pour vérifier que les données `DATA,Temp,Hum` s'affichent.
 
 ### Étape 2 : Préparation du NAS (OpenMediaVault)
@@ -534,6 +534,7 @@ Les tests du dashboard sont ignorés si Flask n'est pas installé sur la machine
 | Symptôme | Piste à explorer |
 |---|---|
 | Port série absent | Vérifiez `/dev/ttyUSB*` / `/dev/ttyACM*`, `lsusb`, `dmesg \| tail` |
+| Plus aucune mesure alors que le port est ouvert (souvent après un redémarrage du NAS) | Le collecteur redémarre l'Arduino tout seul (« L'Arduino ne répond plus » dans `journalctl -u monitor-climat`). Si rien ne revient : débranchez et rebranchez le câble USB de l'Arduino |
 | Données illisibles | Baudrate 9600 ? Droits série (`dialout`) ? |
 | CSV vide | `journalctl -u monitor-climat -n 50` |
 | `dashboard.py` introuvable | Recopiez `nas/dashboard.py` et le dossier `nas/static/` dans `monitoring` (étape 5) |
